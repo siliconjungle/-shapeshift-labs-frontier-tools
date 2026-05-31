@@ -213,11 +213,3 @@ npm run bench
 ```
 
 The package benchmark prints Frontier-only package measurements for manifest creation, compilation, availability, planning, descriptor generation, dry-run execution, registry graph output, JSONL, and proofs.
-
-Research comparison harness:
-
-```sh
-npm run bench:competitors
-```
-
-Competitor results are intentionally kept in benchmark artifacts and research notes rather than README claims.
