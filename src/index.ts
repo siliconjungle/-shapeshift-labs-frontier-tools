@@ -959,6 +959,210 @@ export function defineCoordinatorActions(input: FrontierCoordinatorActionRegistr
   return createCoordinatorActionManifest(input);
 }
 
+export interface FrontierModelRoutingActionRegistryInput {
+  id?: string;
+  title?: string;
+  package?: string;
+  feature?: string;
+  owner?: string;
+  artifactRoot?: string;
+  metadata?: unknown;
+}
+
+export const FRONTIER_MODEL_ROUTING_ACTION_REGISTRY_ID = 'frontier.tools.model-routing-actions';
+export const FRONTIER_MODEL_ROUTING_ACTION_IDS = [
+  'model-routing.explain-routing',
+  'model-routing.compare-candidate-tiers',
+  'model-routing.apply-budget-caps',
+  'model-routing.record-outcome-feedback',
+  'model-routing.request-tournament-rerun'
+] as const;
+
+export function createModelRoutingActionDescriptors(input: FrontierModelRoutingActionRegistryInput = {}): FrontierToolActionInput[] {
+  const artifactRoot = input.artifactRoot === undefined ? 'model-routing' : readString(input.artifactRoot, 'model routing artifact root');
+  const owner = optionalString(input.owner, 'model routing action owner');
+  const packageName = optionalString(input.package, 'model routing action package');
+  const feature = optionalString(input.feature, 'model routing action feature');
+
+  return [
+    {
+      id: 'model-routing.explain-routing',
+      title: 'Explain routing',
+      description: 'Explain why a request selected a model tier, fallback, or routing path.',
+      capability: 'model-routing.routing.explain',
+      risk: 'low',
+      input: {
+        requestId: { type: 'string', minLength: 1 },
+        routeId: { type: 'string', required: false },
+        modelId: { type: 'string', required: false },
+        tierId: { type: 'string', required: false },
+        includeSignals: { type: 'boolean', required: false },
+        includeBudget: { type: 'boolean', required: false },
+        maxReasons: { type: 'integer', required: false, minimum: 0 }
+      },
+      reads: ['model-routing:routes', 'model-routing:decisions', 'model-routing:signals', 'model-routing:budgets'],
+      writes: [
+        artifactRoot + '/explain-routing.json',
+        artifactRoot + '/explain-routing.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'report', path: artifactRoot + '/explain-routing.json', required: true },
+        { kind: 'log', path: artifactRoot + '/explain-routing.jsonl', required: true }
+      ],
+      requires: ['model-routing.routing.explain'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['model-routing', 'explain', 'dashboard']
+    },
+    {
+      id: 'model-routing.compare-candidate-tiers',
+      title: 'Compare candidate tiers',
+      description: 'Compare candidate model tiers by cost, latency, quality, and confidence signals.',
+      capability: 'model-routing.tiers.compare',
+      risk: 'low',
+      input: {
+        comparisonId: { type: 'string', minLength: 1 },
+        requestId: { type: 'string', required: false },
+        candidateTierIds: { type: 'array', items: { type: 'string' } },
+        metrics: { type: 'array', required: false, items: { type: 'string' } },
+        preferLowerCost: { type: 'boolean', required: false },
+        preferLowerLatency: { type: 'boolean', required: false },
+        includeBudgetSignals: { type: 'boolean', required: false }
+      },
+      reads: ['model-routing:candidates', 'model-routing:benchmarks', 'model-routing:decisions', 'model-routing:budgets'],
+      writes: [
+        artifactRoot + '/compare-candidate-tiers.json',
+        artifactRoot + '/compare-candidate-tiers.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'report', path: artifactRoot + '/compare-candidate-tiers.json', required: true },
+        { kind: 'log', path: artifactRoot + '/compare-candidate-tiers.jsonl', required: true }
+      ],
+      requires: ['model-routing.tiers.compare'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['model-routing', 'compare', 'tiers']
+    },
+    {
+      id: 'model-routing.apply-budget-caps',
+      title: 'Apply budget caps',
+      description: 'Apply or preview budget caps for a routing scope or candidate pool.',
+      capability: 'model-routing.budget.apply',
+      risk: 'medium',
+      input: {
+        budgetId: { type: 'string', minLength: 1 },
+        scope: { type: 'string', required: false },
+        tierId: { type: 'string', required: false },
+        capTokens: { type: 'integer', required: false, minimum: 0 },
+        capUsd: { type: 'number', required: false, minimum: 0 },
+        strict: { type: 'boolean', required: false },
+        applyToCurrentRun: { type: 'boolean', required: false }
+      },
+      reads: ['model-routing:budgets', 'model-routing:usage', 'model-routing:decisions', 'model-routing:policies'],
+      writes: [
+        'model-routing:budget-caps',
+        artifactRoot + '/budget-caps.json',
+        artifactRoot + '/budget-caps.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'budget', path: artifactRoot + '/budget-caps.json', required: true },
+        { kind: 'log', path: artifactRoot + '/budget-caps.jsonl', required: true }
+      ],
+      requires: ['model-routing.budget.apply'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['model-routing', 'budget', 'caps']
+    },
+    {
+      id: 'model-routing.record-outcome-feedback',
+      title: 'Record outcome feedback',
+      description: 'Record an execution outcome, winner signal, and feedback for later routing analysis.',
+      capability: 'model-routing.feedback.record',
+      risk: 'low',
+      input: {
+        outcomeId: { type: 'string', minLength: 1 },
+        requestId: { type: 'string', required: false },
+        winningTierId: { type: 'string', required: false },
+        score: { type: 'number', required: false },
+        latencyMs: { type: 'number', required: false, minimum: 0 },
+        costUsd: { type: 'number', required: false, minimum: 0 },
+        feedback: { type: 'string', required: false },
+        tags: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['model-routing:decisions', 'model-routing:outcomes', 'model-routing:usage', 'model-routing:signals'],
+      writes: [
+        'model-routing:feedback',
+        artifactRoot + '/outcome-feedback.json',
+        artifactRoot + '/outcome-feedback.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'record', path: artifactRoot + '/outcome-feedback.json', required: true },
+        { kind: 'log', path: artifactRoot + '/outcome-feedback.jsonl', required: true }
+      ],
+      requires: ['model-routing.feedback.record'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['model-routing', 'feedback', 'outcome']
+    },
+    {
+      id: 'model-routing.request-tournament-rerun',
+      title: 'Request tournament rerun',
+      description: 'Request a fresh candidate tournament when the current result is stale or inconclusive.',
+      capability: 'model-routing.tournament.rerun',
+      risk: 'medium',
+      input: {
+        tournamentId: { type: 'string', minLength: 1 },
+        requestId: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        candidateTierIds: { type: 'array', required: false, items: { type: 'string' } },
+        refreshEvidence: { type: 'boolean', required: false },
+        priority: { type: 'number', required: false },
+        maxCandidates: { type: 'integer', required: false, minimum: 0 }
+      },
+      reads: ['model-routing:tournaments', 'model-routing:decisions', 'model-routing:feedback', 'model-routing:signals'],
+      writes: [
+        'model-routing:tournament-reruns',
+        artifactRoot + '/tournament-rerun.json',
+        artifactRoot + '/tournament-rerun-manifest.json'
+      ],
+      producedArtifacts: [
+        { kind: 'task', path: artifactRoot + '/tournament-rerun.json', required: true },
+        { kind: 'manifest', path: artifactRoot + '/tournament-rerun-manifest.json', required: true }
+      ],
+      requires: ['model-routing.tournament.rerun'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['model-routing', 'rerun', 'tournament']
+    }
+  ];
+}
+
+export function createModelRoutingActionManifest(input: FrontierModelRoutingActionRegistryInput = {}): FrontierToolsManifest {
+  return createToolsManifest({
+    id: input.id ?? FRONTIER_MODEL_ROUTING_ACTION_REGISTRY_ID,
+    title: input.title ?? 'Model routing actions',
+    package: input.package,
+    feature: input.feature,
+    owner: input.owner,
+    actions: createModelRoutingActionDescriptors(input),
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'model routing action registry metadata')
+  });
+}
+
+export function defineModelRoutingActions(input: FrontierModelRoutingActionRegistryInput = {}): FrontierToolsManifest {
+  return createModelRoutingActionManifest(input);
+}
+
 export function compileTools(
   manifestOrInput: FrontierToolsManifest | FrontierToolsManifestInput | readonly FrontierToolActionInput[]
 ): FrontierToolsCompiler {

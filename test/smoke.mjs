@@ -5,6 +5,8 @@ import {
   createCoordinatorActionDescriptors,
   createCoordinatorActionManifest,
   createAgentTaskDescriptor,
+  createModelRoutingActionDescriptors,
+  createModelRoutingActionManifest,
   createToolDescriptor,
   createToolDescriptors,
   createToolRecord,
@@ -264,3 +266,38 @@ assert.strictEqual(coordinatorCompiler.get('coordinator.apply-bundle').risk, 'hi
 assert.strictEqual(coordinatorCompiler.get('coordinator.answer-question').capability, 'coordinator.question.answer');
 assert.ok(coordinatorCompiler.get('coordinator.apply-bundle').producedArtifacts.some((artifact) => artifact.kind === 'decision'));
 assert.strictEqual(createToolDescriptor(coordinatorCompiler.get('coordinator.apply-bundle'), { format: 'frontier' }).risk, 'high');
+
+const modelRoutingDescriptors = createModelRoutingActionDescriptors({
+  id: 'model-routing.tools',
+  package: '@app/model-routing',
+  feature: 'adaptive-routing',
+  owner: 'routing',
+  artifactRoot: 'evidence/model-routing'
+});
+assert.strictEqual(modelRoutingDescriptors.length, 5);
+assert.ok(modelRoutingDescriptors.every((action) => action.dryRun === true));
+assert.deepStrictEqual(modelRoutingDescriptors[0].reads, ['model-routing:routes', 'model-routing:decisions', 'model-routing:signals', 'model-routing:budgets']);
+assert.deepStrictEqual(modelRoutingDescriptors[0].writes, [
+  'evidence/model-routing/explain-routing.json',
+  'evidence/model-routing/explain-routing.jsonl'
+]);
+assert.strictEqual(modelRoutingDescriptors[1].capability, 'model-routing.tiers.compare');
+assert.strictEqual(modelRoutingDescriptors[2].risk, 'medium');
+assert.ok(modelRoutingDescriptors[3].writes.includes('evidence/model-routing/outcome-feedback.json'));
+assert.ok(modelRoutingDescriptors[4].producedArtifacts.some((artifact) => artifact.kind === 'manifest'));
+
+const modelRoutingManifest = createModelRoutingActionManifest({
+  id: 'model-routing.tools',
+  package: '@app/model-routing',
+  feature: 'adaptive-routing',
+  owner: 'routing',
+  artifactRoot: 'evidence/model-routing'
+});
+const modelRoutingCompiler = compileTools(modelRoutingManifest);
+const modelRoutingDescriptorsOut = createToolDescriptors(modelRoutingCompiler, { capabilities: modelRoutingManifest.capabilities }, { format: 'frontier' });
+assert.strictEqual(modelRoutingManifest.summary.actionCount, 5);
+assert.strictEqual(modelRoutingManifest.summary.dryRunCount, 5);
+assert.strictEqual(modelRoutingManifest.summary.approvalCount, 0);
+assert.strictEqual(modelRoutingCompiler.get('model-routing.request-tournament-rerun').capability, 'model-routing.tournament.rerun');
+assert.strictEqual(createToolDescriptor(modelRoutingCompiler.get('model-routing.explain-routing'), { format: 'frontier' }).risk, 'low');
+assert.strictEqual(modelRoutingDescriptorsOut.length, 5);
