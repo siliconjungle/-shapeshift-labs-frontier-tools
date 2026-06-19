@@ -202,6 +202,7 @@ npm install @shapeshift-labs/frontier-tools
 ```ts
 import {
   compileTools,
+  createAgentTaskDescriptor,
   createToolDescriptors,
   createToolsManifest,
   executeToolAction,
@@ -225,6 +226,23 @@ const tools = compileTools(createToolsManifest({
 
 const context = { capabilities: ['todo.write'] };
 
+const task = createAgentTaskDescriptor({
+  id: 'todos.audit-export',
+  capability: 'todo.audit',
+  reads: ['entities.todos'],
+  writes: ['agent-runs/todos-audit/evidence'],
+  expectedArtifacts: [
+    { kind: 'patch', path: 'changes.patch' },
+    { kind: 'evidence', path: 'evidence/evidence.json' }
+  ],
+  safetyPolicy: {
+    approvalRequired: true,
+    network: 'none',
+    secrets: 'none'
+  },
+  status: 'queued'
+});
+
 const descriptors = createToolDescriptors(tools, context, {
   format: 'openai',
   strict: true,
@@ -247,6 +265,7 @@ const record = executeToolAction(tools, {
 ## Surface
 
 - `createToolsManifest`, `defineTools`, and `defineToolAction` normalize serializable action manifests.
+- `createAgentTaskDescriptor` and `defineAgentTaskDescriptor` normalize queue-ready AI task descriptors with capabilities, declared reads/writes, expected artifacts, safety policy, and result status.
 - `compileTools` indexes actions for repeated availability checks, descriptors, plans, and queries.
 - `validateToolInput` validates JSON-schema-shaped inputs without adding runtime validator dependencies.
 - `planToolAction` and `planToolActionAsync` return policy-aware dry-run plans with expected patch previews.
@@ -277,6 +296,12 @@ const plan = await tools.planAsync(
 ```
 
 The same decision can drive what descriptors an agent sees, whether a handler runs, which effects are blocked, and what proof is recorded.
+
+## Agent Task Descriptors
+
+Task descriptors describe work before an agent or worker executes it. They are intentionally structural: a queue can route by `capability`, reserve work by `status`, expose `reads` and `writes` to ownership checks, and pre-create dashboard rows for `expectedArtifacts` without importing a worker, policy, workflow, or swarm runtime.
+
+`safetyPolicy` carries queue and dashboard hints such as approval requirements, sandbox mode, network posture, secret handling, command allow/deny lists, required capabilities, and policy resources. By default, descriptors use a workspace sandbox, restricted network, redacted secrets, and mark tasks with declared writes as destructive. Execution systems can store the descriptor beside worker records, then update `status` as the task moves from queued work to dry-run, blocked, ok, or error results.
 
 ## Benchmarks
 

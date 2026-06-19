@@ -30,11 +30,14 @@ export const FRONTIER_TOOLS_IMPACT_KIND = 'frontier.tools.impact';
 export const FRONTIER_TOOLS_IMPACT_VERSION = 1;
 export const FRONTIER_TOOLS_PROOF_KIND = 'frontier.tools.proof';
 export const FRONTIER_TOOLS_PROOF_VERSION = 1;
+export const FRONTIER_AGENT_TASK_DESCRIPTOR_KIND = 'frontier.tools.agent-task';
+export const FRONTIER_AGENT_TASK_DESCRIPTOR_VERSION = 1;
 
 export type FrontierToolsMaybePromise<T> = T | Promise<T>;
 export type FrontierToolInputPrimitive = 'string' | 'number' | 'integer' | 'boolean' | 'object' | 'array' | 'null';
 export type FrontierToolDescriptorFormat = 'frontier' | 'openai' | 'mcp' | 'vercel' | 'langchain';
 export type FrontierToolExecutionStatus = 'ok' | 'planned' | 'dry-run' | 'blocked' | 'invalid' | 'error' | string;
+export type FrontierAgentTaskResultStatus = 'todo' | 'queued' | 'running' | 'planned' | 'dry-run' | 'blocked' | 'invalid' | 'ok' | 'error' | 'cancelled' | string;
 export type FrontierToolJsonSchema = JsonObject;
 
 export interface FrontierToolSourceInput {
@@ -64,6 +67,94 @@ export interface FrontierToolInputFieldInput {
 }
 
 export type FrontierToolInputShape = Record<string, FrontierToolInputPrimitive | FrontierToolInputFieldInput | FrontierToolJsonSchema>;
+
+export interface FrontierAgentTaskArtifactRecordInput {
+  id?: string;
+  kind?: string;
+  path?: string;
+  description?: string;
+  required?: boolean;
+  metadata?: unknown;
+}
+
+export type FrontierAgentTaskArtifactInput = string | FrontierAgentTaskArtifactRecordInput;
+
+export interface FrontierAgentTaskArtifact {
+  id: string;
+  kind: string;
+  path?: string;
+  description?: string;
+  required: boolean;
+  metadata?: JsonObject;
+}
+
+export interface FrontierAgentTaskSafetyPolicyInput {
+  approvalRequired?: boolean;
+  approvalMode?: 'always' | 'policy' | 'never' | string;
+  destructive?: boolean;
+  sandbox?: 'none' | 'workspace' | 'process' | 'browser' | string;
+  network?: 'none' | 'restricted' | 'allowed' | string;
+  secrets?: 'none' | 'redacted' | 'read' | 'write' | string;
+  allowedCommands?: readonly string[];
+  deniedCommands?: readonly string[];
+  requires?: readonly string[];
+  policyResources?: readonly string[];
+  maxRuntimeMs?: number;
+  metadata?: unknown;
+}
+
+export interface FrontierAgentTaskSafetyPolicy {
+  approvalRequired: boolean;
+  approvalMode: string;
+  destructive: boolean;
+  sandbox: string;
+  network: string;
+  secrets: string;
+  allowedCommands: string[];
+  deniedCommands: string[];
+  requires: string[];
+  policyResources: string[];
+  maxRuntimeMs?: number;
+  metadata?: JsonObject;
+}
+
+export interface FrontierAgentTaskDescriptorInput {
+  id: string;
+  capability: string;
+  title?: string;
+  description?: string;
+  reads?: readonly string[];
+  writes?: readonly string[];
+  expectedArtifacts?: readonly FrontierAgentTaskArtifactInput[];
+  safetyPolicy?: FrontierAgentTaskSafetyPolicyInput;
+  status?: FrontierAgentTaskResultStatus;
+  owner?: string;
+  package?: string;
+  feature?: string;
+  tags?: readonly string[];
+  source?: FrontierRegistrySource | FrontierToolSourceInput;
+  metadata?: unknown;
+}
+
+export interface FrontierAgentTaskDescriptor {
+  kind: typeof FRONTIER_AGENT_TASK_DESCRIPTOR_KIND;
+  version: typeof FRONTIER_AGENT_TASK_DESCRIPTOR_VERSION;
+  id: string;
+  capability: string;
+  title: string;
+  description?: string;
+  reads: string[];
+  writes: string[];
+  expectedArtifacts: FrontierAgentTaskArtifact[];
+  safetyPolicy: FrontierAgentTaskSafetyPolicy;
+  status: FrontierAgentTaskResultStatus;
+  owner?: string;
+  package?: string;
+  feature?: string;
+  tags: string[];
+  source?: FrontierRegistrySource;
+  metadata?: JsonObject;
+}
 
 export interface FrontierToolPatchTemplateInput {
   op?: string;
@@ -530,6 +621,39 @@ export function defineToolAction(input: FrontierToolActionInput): FrontierToolAc
 
 export function defineTools(input: FrontierToolsManifestInput = {}): FrontierToolsManifest {
   return createToolsManifest(input);
+}
+
+export function createAgentTaskDescriptor(input: FrontierAgentTaskDescriptorInput): FrontierAgentTaskDescriptor {
+  if (!isObject(input)) throw new TypeError('agent task descriptor must be an object');
+  const id = readString(input.id, 'agent task id');
+  if (id.length === 0) throw new TypeError('agent task id must not be empty');
+  const capability = readString(input.capability, 'agent task capability');
+  if (capability.length === 0) throw new TypeError('agent task capability must not be empty');
+  const reads = uniqueStrings(input.reads ?? []);
+  const writes = uniqueStrings(input.writes ?? []);
+  return {
+    kind: FRONTIER_AGENT_TASK_DESCRIPTOR_KIND,
+    version: FRONTIER_AGENT_TASK_DESCRIPTOR_VERSION,
+    id,
+    capability,
+    title: input.title === undefined ? titleFromId(id) : readString(input.title, 'agent task title'),
+    description: optionalString(input.description, 'agent task description'),
+    reads,
+    writes,
+    expectedArtifacts: (input.expectedArtifacts ?? []).map((artifact, index) => normalizeAgentTaskArtifact(artifact, index)),
+    safetyPolicy: normalizeAgentTaskSafetyPolicy(input.safetyPolicy, id, capability, reads, writes),
+    status: input.status === undefined ? 'planned' : readString(input.status, 'agent task status'),
+    owner: optionalString(input.owner, 'agent task owner'),
+    package: optionalString(input.package, 'agent task package'),
+    feature: optionalString(input.feature, 'agent task feature'),
+    tags: uniqueStrings(input.tags ?? []),
+    source: input.source === undefined ? undefined : input.source,
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'agent task metadata')
+  };
+}
+
+export function defineAgentTaskDescriptor(input: FrontierAgentTaskDescriptorInput): FrontierAgentTaskDescriptor {
+  return createAgentTaskDescriptor(input);
 }
 
 export function compileTools(
@@ -1102,6 +1226,58 @@ function normalizeToolAction(input: FrontierToolActionInput, index: number): Fro
   };
 }
 
+function normalizeAgentTaskArtifact(input: FrontierAgentTaskArtifactInput, index: number): FrontierAgentTaskArtifact {
+  if (typeof input === 'string') {
+    if (input.length === 0) throw new TypeError('agent task artifact path must not be empty');
+    return {
+      id: 'artifact:' + index,
+      kind: 'artifact',
+      path: input,
+      required: true
+    };
+  }
+  if (!isObject(input)) throw new TypeError('agent task artifact must be a string path or object');
+  const kind = input.kind === undefined ? 'artifact' : readString(input.kind, 'agent task artifact kind');
+  const path = optionalString(input.path, 'agent task artifact path');
+  const id = input.id === undefined ? (path === undefined ? kind + ':' + index : kind + ':' + path) : readString(input.id, 'agent task artifact id');
+  if (id.length === 0) throw new TypeError('agent task artifact id must not be empty');
+  return {
+    id,
+    kind,
+    path,
+    description: optionalString(input.description, 'agent task artifact description'),
+    required: input.required !== false,
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'agent task artifact metadata')
+  };
+}
+
+function normalizeAgentTaskSafetyPolicy(
+  input: FrontierAgentTaskSafetyPolicyInput | undefined,
+  taskId: string,
+  capability: string,
+  reads: readonly string[],
+  writes: readonly string[]
+): FrontierAgentTaskSafetyPolicy {
+  const approvalRequired = input?.approvalRequired === true;
+  const destructive = input?.destructive ?? writes.length !== 0;
+  const policyResources = uniqueStrings((input?.policyResources ?? []).concat('task:' + taskId, 'capability:' + capability, reads, writes));
+  const out: FrontierAgentTaskSafetyPolicy = {
+    approvalRequired,
+    approvalMode: input?.approvalMode === undefined ? (approvalRequired ? 'always' : 'policy') : readString(input.approvalMode, 'agent task approval mode'),
+    destructive,
+    sandbox: input?.sandbox === undefined ? 'workspace' : readString(input.sandbox, 'agent task sandbox'),
+    network: input?.network === undefined ? 'restricted' : readString(input.network, 'agent task network'),
+    secrets: input?.secrets === undefined ? 'redacted' : readString(input.secrets, 'agent task secrets'),
+    allowedCommands: uniqueStrings(input?.allowedCommands ?? []),
+    deniedCommands: uniqueStrings(input?.deniedCommands ?? []),
+    requires: uniqueStrings([capability].concat(input?.requires ?? [])),
+    policyResources,
+    metadata: input?.metadata === undefined ? undefined : readJsonObject(input.metadata, 'agent task safety metadata')
+  };
+  if (input?.maxRuntimeMs !== undefined) out.maxRuntimeMs = readNonNegativeNumber(input.maxRuntimeMs, 'agent task maxRuntimeMs');
+  return out;
+}
+
 function normalizeInputSchema(input: FrontierToolInputShape | undefined, inputSchema: FrontierToolJsonSchema | undefined, actionId: string): FrontierToolJsonSchema {
   if (inputSchema !== undefined) {
     const schema = readJsonObject(inputSchema, 'tool action inputSchema');
@@ -1532,6 +1708,11 @@ function isPromiseLike(value: unknown): value is Promise<unknown> {
 
 function readString(value: unknown, label: string): string {
   if (typeof value !== 'string') throw new TypeError(label + ' must be a string');
+  return value;
+}
+
+function readNonNegativeNumber(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new TypeError(label + ' must be a non-negative number');
   return value;
 }
 

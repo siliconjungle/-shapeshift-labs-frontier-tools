@@ -2,6 +2,7 @@ import assert from 'node:assert';
 import {
   appendToolSessionRecord,
   compileTools,
+  createAgentTaskDescriptor,
   createToolDescriptor,
   createToolDescriptors,
   createToolRecord,
@@ -80,6 +81,39 @@ assert.strictEqual(defineToolAction({ id: 'x.y' }).title, 'Y');
 assert.strictEqual(manifest.summary.actionCount, 3);
 assert.strictEqual(manifest.summary.dryRunCount, 1);
 assert.strictEqual(manifest.summary.rollbackCount, 1);
+
+const agentTask = createAgentTaskDescriptor({
+  id: 'todos.audit-export',
+  capability: 'todo.audit',
+  reads: ['entities.todos', 'entities.todos'],
+  writes: ['agent-runs/todos-audit/evidence'],
+  expectedArtifacts: [
+    { kind: 'patch', path: 'changes.patch', required: true },
+    { kind: 'evidence', path: 'evidence/evidence.json', metadata: { dashboard: true } }
+  ],
+  safetyPolicy: {
+    approvalRequired: true,
+    sandbox: 'workspace',
+    network: 'none',
+    secrets: 'none',
+    allowedCommands: ['npm --prefix packages/frontier-tools run test'],
+    maxRuntimeMs: 120000
+  },
+  status: 'queued'
+});
+assert.strictEqual(agentTask.kind, 'frontier.tools.agent-task');
+assert.strictEqual(agentTask.title, 'Audit Export');
+assert.strictEqual(agentTask.capability, 'todo.audit');
+assert.deepStrictEqual(agentTask.reads, ['entities.todos']);
+assert.deepStrictEqual(agentTask.writes, ['agent-runs/todos-audit/evidence']);
+assert.strictEqual(agentTask.expectedArtifacts.length, 2);
+assert.strictEqual(agentTask.expectedArtifacts[1].metadata.dashboard, true);
+assert.strictEqual(agentTask.safetyPolicy.approvalRequired, true);
+assert.strictEqual(agentTask.safetyPolicy.destructive, true);
+assert.deepStrictEqual(agentTask.safetyPolicy.requires, ['todo.audit']);
+assert.ok(agentTask.safetyPolicy.policyResources.includes('task:todos.audit-export'));
+assert.strictEqual(agentTask.safetyPolicy.maxRuntimeMs, 120000);
+assert.strictEqual(agentTask.status, 'queued');
 
 const compiler = compileTools(manifest);
 assert.strictEqual(compiler.get('todos.complete').id, 'todos.complete');
