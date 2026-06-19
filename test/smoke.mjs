@@ -517,6 +517,8 @@ assert.strictEqual(continuousPoolDescriptors.find((action) => action.id === 'con
 assert.deepStrictEqual(Object.keys(FRONTIER_CONTINUOUS_POOL_TASK_SET_SELECTION_INPUT), ['desiredConcurrency', 'selectedTaskSetGeneration']);
 assert.deepStrictEqual(continuousPoolDescriptors.find((action) => action.id === 'continuous-pool.select-next-task-set').input.desiredConcurrency, FRONTIER_CONTINUOUS_POOL_TASK_SET_SELECTION_INPUT.desiredConcurrency);
 assert.deepStrictEqual(continuousPoolDescriptors.find((action) => action.id === 'continuous-pool.select-next-task-set').input.selectedTaskSetGeneration, FRONTIER_CONTINUOUS_POOL_TASK_SET_SELECTION_INPUT.selectedTaskSetGeneration);
+assert.strictEqual(continuousPoolDescriptors.find((action) => action.id === 'continuous-pool.select-next-task-set').input.desiredConcurrency.description, 'Target concurrency for the next continuous-pool task set.');
+assert.strictEqual(continuousPoolDescriptors.find((action) => action.id === 'continuous-pool.select-next-task-set').input.selectedTaskSetGeneration.description, 'Generation index to use when selecting the next task set.');
 assert.deepStrictEqual(continuousPoolDescriptors.find((action) => action.id === 'continuous-pool.emit-human-question').reads, ['pool:reviews', 'pool:questions', 'pool:evidence']);
 assert.ok(continuousPoolDescriptors.find((action) => action.id === 'continuous-pool.inspect-pool').producedArtifacts.some((artifact) => artifact.kind === 'evidence'));
 assert.strictEqual(continuousPoolDescriptors.find((action) => action.id === 'continuous-pool.apply-candidate').approval.required, true);

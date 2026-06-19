@@ -1098,8 +1098,16 @@ export const FRONTIER_CONTINUOUS_POOL_ACTION_IDS = [
 ] as const;
 
 export const FRONTIER_CONTINUOUS_POOL_TASK_SET_SELECTION_INPUT = {
-  desiredConcurrency: { type: 'integer', minimum: 0 },
-  selectedTaskSetGeneration: { type: 'integer', minimum: 0 }
+  desiredConcurrency: {
+    type: 'integer',
+    minimum: 0,
+    description: 'Target concurrency for the next continuous-pool task set.'
+  },
+  selectedTaskSetGeneration: {
+    type: 'integer',
+    minimum: 0,
+    description: 'Generation index to use when selecting the next task set.'
+  }
 } as const;
 
 export function createContinuousPoolActionDescriptors(input: FrontierContinuousPoolActionRegistryInput = {}): FrontierToolActionInput[] {
