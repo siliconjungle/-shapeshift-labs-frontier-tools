@@ -3,7 +3,8 @@
 Serializable action and tool manifests for agent-operable Frontier apps.
 
 `frontier-tools` turns app affordances into data: what an action reads, writes, validates, requires, previews, rolls back, exposes to AI tools, and records after execution. It is not an agent runtime and it does not import MCP, OpenAI, LangChain, Vercel AI SDK, policy, route, view, trace, or mutation packages. Those systems can attach through structural adapters.
-It also ships structural coordinator and model-routing registries for queue inspection, scope leasing, bundle application, reruns, decision recording, question answering, queue refill, routing explanations, tier comparisons, budget caps, outcome feedback, and tournament reruns.
+It also ships structural coordinator, gate-run, bundle-repair, tool-record, gate-backed drain, autonomous-merge, continuous-pool, model-routing, and model-policy-override registries for queue inspection, scope leasing, package/local/global gate runs, patch generation, apply/reject/rerun/no-change recording, gate selection, gate-backed apply, failure routing, reruns, decision recording, question answering, task-set selection, queue refill, merge promotion, routing explanations, tier comparisons, budget caps, outcome feedback, tournament reruns, and safe policy override requests.
+It also ships a semantic ownership inspection registry for reviewing region ownership and pending changes.
 
 ## Related Packages
 
@@ -269,8 +270,15 @@ const record = executeToolAction(tools, {
 
 - `createToolsManifest`, `defineTools`, and `defineToolAction` normalize serializable action manifests.
 - `createAgentTaskDescriptor` and `defineAgentTaskDescriptor` normalize queue-ready AI task descriptors with capabilities, declared reads/writes, expected artifacts, safety policy, and result status.
-- `createCoordinatorActionDescriptors`, `createCoordinatorActionManifest`, and `defineCoordinatorActions` provide a ready-made runtime-neutral coordinator action registry with inspect, lease, apply, rerun, record, answer, and refill descriptors.
+- `createAutonomousMergeActionDescriptors`, `createAutonomousMergeActionManifest`, and `defineAutonomousMergeActions` provide a ready-made runtime-neutral autonomous-merge registry with lease, review, apply, promote, rerun, ask-human, consume-answer, and refill descriptors.
+- `createContinuousPoolActionDescriptors`, `createContinuousPoolActionManifest`, and `defineContinuousPoolActions` provide a ready-made runtime-neutral continuous-pool registry with inspect, acquire-lease, apply, promote, rerun, select-next-task-set, emit-human-question, consume-answer, and refill descriptors.
+- `createBundleRepairActionDescriptors`, `createBundleRepairActionManifest`, and `defineBundleRepairActions` provide a ready-made runtime-neutral bundle-repair registry with inspect, generate-patch, validate-patch, mark-no-change, request-rerun, reject-missing-evidence, and record-applied-decision descriptors.
+- `createToolRecordActionDescriptors`, `createToolRecordActionManifest`, and `defineToolRecordActions` provide a ready-made runtime-neutral tool-record registry with apply, reject, rerun, and no-change descriptors.
+- `createCoordinatorActionDescriptors`, `createCoordinatorActionManifest`, and `defineCoordinatorActions` provide a ready-made runtime-neutral coordinator action registry with inspect, lease, apply, rerun, record, answer, submit-answer, and refill descriptors.
+- `createGateRunActionDescriptors`, `createGateRunActionManifest`, and `defineGateRunActions` provide a ready-made runtime-neutral gate-run registry with package, local, and global gate-run descriptors.
+- `createGateBackedDrainActionDescriptors`, `createGateBackedDrainActionManifest`, and `defineGateBackedDrainActions` provide a ready-made runtime-neutral gate-backed drain registry with default gate selection, gate-backed apply, gate failure routing, missing-gate rerun, and decision-ledger write descriptors.
 - `createModelRoutingActionDescriptors`, `createModelRoutingActionManifest`, and `defineModelRoutingActions` provide a ready-made runtime-neutral model-routing action registry with explain, compare, budget-cap, feedback, and tournament-rerun descriptors.
+- `createModelRoutingPolicyOverrideActionDescriptors`, `createSafeModelRoutingPolicyOverrideActionDescriptors`, `createModelRoutingPolicyOverrideActionManifest`, `createSafeModelRoutingPolicyOverrideActionManifest`, `defineModelRoutingPolicyOverrideActions`, and `defineSafeModelRoutingPolicyOverrideActions` provide a ready-made runtime-neutral model-policy-override registry with safe preview and approval-gated request descriptors.
 - `compileTools` indexes actions for repeated availability checks, descriptors, plans, and queries.
 - `validateToolInput` validates JSON-schema-shaped inputs without adding runtime validator dependencies.
 - `planToolAction` and `planToolActionAsync` return policy-aware dry-run plans with expected patch previews.
@@ -279,7 +287,11 @@ const record = executeToolAction(tools, {
 - `createToolsRegistryGraph` and `traceToolsImpact` expose actions to Frontier registry and impact queries.
 - `createToolsSession`, `encodeToolsJsonl`, `decodeToolsJsonl`, `redactToolsManifest`, and `createToolsProof` support replay, audit, redaction, and evidence bundles.
 
-Coordinator action descriptors carry declared reads and writes, a primary capability, a risk label, dry-run support, and produced decision artifacts so queue systems can classify work without importing a runner.
+Coordinator action descriptors carry declared reads and writes, a primary capability, a risk label, dry-run support, and produced decision artifacts so queue systems can classify work without importing a runner. The answer and submit-answer descriptors keep dashboard text-area submissions structured without collapsing them into untyped notes.
+Gate-run descriptors keep package-local, local, and global verification work separate so gate scope stays explicit and reusable across repos.
+Bundle-repair descriptors keep patch generation separate from applied-decision recording so policy systems can treat proposal work and terminal decisions differently.
+Gate-backed drain descriptors keep default gate selection, gate-backed apply, failure routing, missing-gate reruns, and decision-ledger writes separate so blind apply stays distinguishable from gated apply and approval policy remains explicit.
+Autonomous merge descriptors separate queue, review, and promotion actions from human-question routing so systems can expose escalation prompts without conflating them with coordinator review work.
 Model-routing action descriptors use the same structural shape for dashboard-safe explain and comparison actions, plus budget, feedback, and rerun requests that stay declarative and replayable.
 
 ## Policy Bridge

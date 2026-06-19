@@ -688,6 +688,1201 @@ export function defineAgentTaskDescriptor(input: FrontierAgentTaskDescriptorInpu
   return createAgentTaskDescriptor(input);
 }
 
+export interface FrontierSemanticOwnershipActionRegistryInput {
+  id?: string;
+  title?: string;
+  package?: string;
+  feature?: string;
+  owner?: string;
+  artifactRoot?: string;
+  metadata?: unknown;
+}
+
+export const FRONTIER_SEMANTIC_OWNERSHIP_ACTION_REGISTRY_ID = 'frontier.tools.semantic-ownership-actions';
+export const FRONTIER_SEMANTIC_OWNERSHIP_ACTION_IDS = [
+  'semantic-ownership.inspect-region'
+] as const;
+
+export function createSemanticOwnershipActionDescriptors(input: FrontierSemanticOwnershipActionRegistryInput = {}): FrontierToolActionInput[] {
+  const artifactRoot = input.artifactRoot === undefined ? 'semantic-ownership' : readString(input.artifactRoot, 'semantic ownership artifact root');
+  const owner = optionalString(input.owner, 'semantic ownership action owner');
+  const packageName = optionalString(input.package, 'semantic ownership action package');
+  const feature = optionalString(input.feature, 'semantic ownership action feature');
+
+  return [
+    {
+      id: 'semantic-ownership.inspect-region',
+      title: 'Inspect region ownership',
+      description: 'Inspect a semantic region, its ownership, and pending changes before editing.',
+      capability: 'semantic-ownership.region.inspect',
+      risk: 'low',
+      input: {
+        regionId: { type: 'string', minLength: 1 },
+        scope: { type: 'string', required: false },
+        pathPrefix: { type: 'string', required: false },
+        limit: { type: 'integer', required: false, minimum: 0 },
+        includeOwners: { type: 'boolean', required: false },
+        includePendingChanges: { type: 'boolean', required: false },
+        includeEvidence: { type: 'boolean', required: false },
+        includeHistory: { type: 'boolean', required: false }
+      },
+      reads: ['region:ownership', 'region:pending-changes', 'region:changes', 'region:evidence'],
+      writes: [
+        artifactRoot + '/inspect-region.json',
+        artifactRoot + '/inspect-region.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'report', path: artifactRoot + '/inspect-region.json', required: true },
+        { kind: 'log', path: artifactRoot + '/inspect-region.jsonl', required: true }
+      ],
+      requires: ['semantic-ownership.region.inspect'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['semantic-ownership', 'inspect', 'ownership']
+    }
+  ];
+}
+
+export function createSemanticOwnershipActionManifest(input: FrontierSemanticOwnershipActionRegistryInput = {}): FrontierToolsManifest {
+  return createToolsManifest({
+    id: input.id ?? FRONTIER_SEMANTIC_OWNERSHIP_ACTION_REGISTRY_ID,
+    title: input.title ?? 'Semantic ownership actions',
+    package: input.package,
+    feature: input.feature,
+    owner: input.owner,
+    actions: createSemanticOwnershipActionDescriptors(input),
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'semantic ownership action registry metadata')
+  });
+}
+
+export function defineSemanticOwnershipActions(input: FrontierSemanticOwnershipActionRegistryInput = {}): FrontierToolsManifest {
+  return createSemanticOwnershipActionManifest(input);
+}
+
+export interface FrontierAutonomousMergeActionRegistryInput {
+  id?: string;
+  title?: string;
+  package?: string;
+  feature?: string;
+  owner?: string;
+  artifactRoot?: string;
+  metadata?: unknown;
+}
+
+export const FRONTIER_AUTONOMOUS_MERGE_ACTION_REGISTRY_ID = 'frontier.tools.autonomous-merge-actions';
+export const FRONTIER_AUTONOMOUS_MERGE_ACTION_IDS = [
+  'autonomous-merge.lease-queue',
+  'autonomous-merge.drain-review',
+  'autonomous-merge.apply-candidate',
+  'autonomous-merge.promote-upward',
+  'autonomous-merge.rerun-stale',
+  'autonomous-merge.ask-human',
+  'autonomous-merge.consume-answer',
+  'autonomous-merge.refill-backlog'
+] as const;
+
+export function createAutonomousMergeActionDescriptors(input: FrontierAutonomousMergeActionRegistryInput = {}): FrontierToolActionInput[] {
+  const artifactRoot = input.artifactRoot === undefined ? 'autonomous-merge' : readString(input.artifactRoot, 'autonomous merge artifact root');
+  const owner = optionalString(input.owner, 'autonomous merge action owner');
+  const packageName = optionalString(input.package, 'autonomous merge action package');
+  const feature = optionalString(input.feature, 'autonomous merge action feature');
+
+  return [
+    {
+      id: 'autonomous-merge.lease-queue',
+      title: 'Lease queue',
+      description: 'Lease the autonomous merge queue so one coordinator owns the current review lane.',
+      capability: 'autonomous-merge.queue.lease',
+      risk: 'medium',
+      input: {
+        queueId: { type: 'string', minLength: 1 },
+        leaseKey: { type: 'string', minLength: 1 },
+        scope: { type: 'string', minLength: 1 },
+        owner: { type: 'string', required: false },
+        ttlMs: { type: 'integer', required: false, minimum: 0 },
+        strict: { type: 'boolean', required: false }
+      },
+      reads: ['merge:queue', 'merge:leases', 'merge:scopes'],
+      writes: [
+        'merge:leases',
+        artifactRoot + '/lease-queue.json',
+        artifactRoot + '/lease-queue.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'lease', path: 'merge:leases/:leaseKey', required: true },
+        { kind: 'report', path: artifactRoot + '/lease-queue.json', required: true },
+        { kind: 'log', path: artifactRoot + '/lease-queue.jsonl', required: true }
+      ],
+      requires: ['autonomous-merge.queue.lease'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['autonomous-merge', 'queue', 'lease']
+    },
+    {
+      id: 'autonomous-merge.drain-review',
+      title: 'Drain review',
+      description: 'Drain the review backlog into a compact queue-safe review batch.',
+      capability: 'autonomous-merge.review.drain',
+      risk: 'low',
+      input: {
+        reviewId: { type: 'string', minLength: 1 },
+        queueId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        limit: { type: 'integer', required: false, minimum: 0 },
+        includeStale: { type: 'boolean', required: false },
+        includePromoted: { type: 'boolean', required: false },
+        includeHumanQuestions: { type: 'boolean', required: false }
+      },
+      reads: ['merge:queue', 'merge:leases', 'merge:reviews', 'merge:questions'],
+      writes: [
+        artifactRoot + '/drain-review.json',
+        artifactRoot + '/drain-review.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'report', path: artifactRoot + '/drain-review.json', required: true },
+        { kind: 'log', path: artifactRoot + '/drain-review.jsonl', required: true }
+      ],
+      requires: ['autonomous-merge.review.drain'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['autonomous-merge', 'review', 'drain']
+    },
+    {
+      id: 'autonomous-merge.apply-candidate',
+      title: 'Apply candidate',
+      description: 'Prepare a merge candidate for application and capture the resulting evidence trail.',
+      capability: 'autonomous-merge.candidate.apply',
+      risk: 'high',
+      input: {
+        candidateId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        leaseKey: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        targetRef: { type: 'string', required: false },
+        dryRunOnly: { type: 'boolean', required: false },
+        requiredChecks: { type: 'array', required: false, items: { type: 'string' } },
+        requiredEvidence: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['merge:candidates', 'merge:reviews', 'merge:verification', 'merge:decisions'],
+      writes: [
+        'merge:decisions',
+        'merge:candidates',
+        artifactRoot + '/apply-candidate.json',
+        artifactRoot + '/apply-candidate.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'decision', path: artifactRoot + '/apply-candidate.json', required: true },
+        { kind: 'log', path: artifactRoot + '/apply-candidate.jsonl', required: true },
+        { kind: 'patch', path: artifactRoot + '/apply-candidate.patch', required: true }
+      ],
+      requires: ['autonomous-merge.candidate.apply'],
+      approval: {
+        required: true,
+        reason: 'candidate application changes merge-owned state'
+      },
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['autonomous-merge', 'merge', 'apply']
+    },
+    {
+      id: 'autonomous-merge.promote-upward',
+      title: 'Promote upward',
+      description: 'Promote a reviewed candidate to the next queue or owner tier with preserved evidence.',
+      capability: 'autonomous-merge.promotion.promote',
+      risk: 'medium',
+      input: {
+        promotionId: { type: 'string', minLength: 1 },
+        candidateId: { type: 'string', minLength: 1 },
+        sourceQueueId: { type: 'string', required: false },
+        targetQueueId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        includeEvidence: { type: 'boolean', required: false }
+      },
+      reads: ['merge:candidates', 'merge:promotions', 'merge:reviews', 'merge:queue'],
+      writes: [
+        'merge:promotions',
+        artifactRoot + '/promote-upward.json',
+        artifactRoot + '/promote-upward.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'manifest', path: artifactRoot + '/promote-upward.json', required: true },
+        { kind: 'log', path: artifactRoot + '/promote-upward.jsonl', required: true }
+      ],
+      requires: ['autonomous-merge.promotion.promote'],
+      approval: {
+        required: true,
+        reason: 'promotion changes merge routing and queue ownership'
+      },
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['autonomous-merge', 'merge', 'promote']
+    },
+    {
+      id: 'autonomous-merge.rerun-stale',
+      title: 'Rerun stale',
+      description: 'Request a fresh review when the current merge evidence is stale or incomplete.',
+      capability: 'autonomous-merge.review.rerun',
+      risk: 'medium',
+      input: {
+        reviewId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        sourceCandidateId: { type: 'string', required: false },
+        staleAfterMs: { type: 'integer', required: false, minimum: 0 },
+        reason: { type: 'string', required: false },
+        refreshEvidence: { type: 'boolean', required: false }
+      },
+      reads: ['merge:reviews', 'merge:decisions', 'merge:evidence', 'merge:queue'],
+      writes: [
+        'merge:reruns',
+        artifactRoot + '/rerun-stale.json',
+        artifactRoot + '/rerun-stale.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'task', path: artifactRoot + '/rerun-stale.json', required: true },
+        { kind: 'manifest', path: artifactRoot + '/rerun-stale.jsonl', required: true }
+      ],
+      requires: ['autonomous-merge.review.rerun'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['autonomous-merge', 'review', 'rerun']
+    },
+    {
+      id: 'autonomous-merge.ask-human',
+      title: 'Ask human',
+      description: 'Create a human question when merge review needs explicit guidance or escalation.',
+      capability: 'autonomous-merge.human.ask',
+      risk: 'low',
+      input: {
+        questionId: { type: 'string', minLength: 1 },
+        topic: { type: 'string', minLength: 1 },
+        question: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        candidateId: { type: 'string', required: false },
+        decisionId: { type: 'string', required: false },
+        evidencePaths: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['merge:reviews', 'merge:questions', 'merge:evidence'],
+      writes: [
+        'merge:questions',
+        artifactRoot + '/ask-human.json',
+        artifactRoot + '/human-question-routing.json'
+      ],
+      producedArtifacts: [
+        { kind: 'question', path: artifactRoot + '/ask-human.json', required: true },
+        { kind: 'routing', path: artifactRoot + '/human-question-routing.json', required: true }
+      ],
+      requires: ['autonomous-merge.human.ask'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['autonomous-merge', 'human', 'question']
+    },
+    {
+      id: 'autonomous-merge.consume-answer',
+      title: 'Consume answer',
+      description: 'Consume a human answer and route it back into the autonomous merge decision trail.',
+      capability: 'autonomous-merge.human.consume',
+      risk: 'low',
+      input: {
+        questionId: { type: 'string', minLength: 1 },
+        answerCode: { type: 'string', minLength: 1 },
+        answer: { type: 'string', required: false },
+        decisionId: { type: 'string', required: false },
+        queueItemId: { type: 'string', required: false },
+        candidateId: { type: 'string', required: false },
+        evidencePaths: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['merge:questions', 'merge:answers', 'merge:decisions'],
+      writes: [
+        'merge:answers',
+        'merge:questions',
+        artifactRoot + '/consume-answer.json',
+        artifactRoot + '/human-answer-routing.json'
+      ],
+      producedArtifacts: [
+        { kind: 'answer', path: artifactRoot + '/consume-answer.json', required: true },
+        { kind: 'routing', path: artifactRoot + '/human-answer-routing.json', required: true }
+      ],
+      requires: ['autonomous-merge.human.consume'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['autonomous-merge', 'human', 'answer']
+    },
+    {
+      id: 'autonomous-merge.refill-backlog',
+      title: 'Refill backlog',
+      description: 'Refill the merge backlog with fresh, promoted, or follow-up review work.',
+      capability: 'autonomous-merge.queue.refill',
+      risk: 'medium',
+      input: {
+        queueId: { type: 'string', minLength: 1 },
+        scope: { type: 'string', required: false },
+        targetCount: { type: 'integer', required: false, minimum: 0 },
+        source: { type: 'string', required: false },
+        priorityFloor: { type: 'number', required: false, minimum: 0 },
+        includePromoted: { type: 'boolean', required: false }
+      },
+      reads: ['merge:queue', 'merge:leases', 'merge:promotions', 'merge:reviews'],
+      writes: [
+        'merge:queue',
+        artifactRoot + '/refill-backlog.json',
+        artifactRoot + '/backlog-refill.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'manifest', path: artifactRoot + '/refill-backlog.json', required: true },
+        { kind: 'log', path: artifactRoot + '/backlog-refill.jsonl', required: true }
+      ],
+      requires: ['autonomous-merge.queue.refill'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['autonomous-merge', 'queue', 'refill']
+    }
+  ];
+}
+
+export function createAutonomousMergeActionManifest(input: FrontierAutonomousMergeActionRegistryInput = {}): FrontierToolsManifest {
+  return createToolsManifest({
+    id: input.id ?? FRONTIER_AUTONOMOUS_MERGE_ACTION_REGISTRY_ID,
+    title: input.title ?? 'Autonomous merge actions',
+    package: input.package,
+    feature: input.feature,
+    owner: input.owner,
+    actions: createAutonomousMergeActionDescriptors(input),
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'autonomous merge action registry metadata')
+  });
+}
+
+export function defineAutonomousMergeActions(input: FrontierAutonomousMergeActionRegistryInput = {}): FrontierToolsManifest {
+  return createAutonomousMergeActionManifest(input);
+}
+
+export interface FrontierContinuousPoolActionRegistryInput {
+  id?: string;
+  title?: string;
+  package?: string;
+  feature?: string;
+  owner?: string;
+  artifactRoot?: string;
+  metadata?: unknown;
+}
+
+export const FRONTIER_CONTINUOUS_POOL_ACTION_REGISTRY_ID = 'frontier.tools.continuous-pool-actions';
+export const FRONTIER_CONTINUOUS_POOL_ACTION_IDS = [
+  'continuous-pool.inspect-pool',
+  'continuous-pool.acquire-merge-lease',
+  'continuous-pool.apply-candidate',
+  'continuous-pool.promote-upward',
+  'continuous-pool.rerun-stale',
+  'continuous-pool.select-next-task-set',
+  'continuous-pool.emit-human-question',
+  'continuous-pool.consume-answer',
+  'continuous-pool.refill-backlog'
+] as const;
+
+export const FRONTIER_CONTINUOUS_POOL_TASK_SET_SELECTION_INPUT = {
+  desiredConcurrency: { type: 'integer', minimum: 0 },
+  selectedTaskSetGeneration: { type: 'integer', minimum: 0 }
+} as const;
+
+export function createContinuousPoolActionDescriptors(input: FrontierContinuousPoolActionRegistryInput = {}): FrontierToolActionInput[] {
+  const artifactRoot = input.artifactRoot === undefined ? 'continuous-pool' : readString(input.artifactRoot, 'continuous pool artifact root');
+  const owner = optionalString(input.owner, 'continuous pool action owner');
+  const packageName = optionalString(input.package, 'continuous pool action package');
+  const feature = optionalString(input.feature, 'continuous pool action feature');
+
+  return [
+    {
+      id: 'continuous-pool.inspect-pool',
+      title: 'Inspect pool',
+      description: 'Inspect the continuous pool queue, leases, candidates, reviews, and evidence before taking action.',
+      capability: 'continuous-pool.pool.inspect',
+      risk: 'low',
+      input: {
+        poolId: { type: 'string', minLength: 1 },
+        scope: { type: 'string', required: false },
+        limit: { type: 'integer', required: false, minimum: 0 },
+        includeLeases: { type: 'boolean', required: false },
+        includeCandidates: { type: 'boolean', required: false },
+        includeReviews: { type: 'boolean', required: false },
+        includeEvidence: { type: 'boolean', required: false }
+      },
+      reads: ['pool:queue', 'pool:leases', 'pool:candidates', 'pool:reviews', 'pool:evidence'],
+      writes: [
+        artifactRoot + '/inspect-pool.evidence.json',
+        artifactRoot + '/inspect-pool.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'evidence', path: artifactRoot + '/inspect-pool.evidence.json', required: true },
+        { kind: 'log', path: artifactRoot + '/inspect-pool.jsonl', required: true }
+      ],
+      requires: ['continuous-pool.pool.inspect'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['continuous-pool', 'coordinator-review', 'inspect']
+    },
+    {
+      id: 'continuous-pool.acquire-merge-lease',
+      title: 'Acquire merge lease',
+      description: 'Acquire a merge lease so one coordinator owns the current continuous pool lane.',
+      capability: 'continuous-pool.merge.lease',
+      risk: 'medium',
+      input: {
+        poolId: { type: 'string', minLength: 1 },
+        leaseKey: { type: 'string', minLength: 1 },
+        scope: { type: 'string', minLength: 1 },
+        owner: { type: 'string', required: false },
+        ttlMs: { type: 'integer', required: false, minimum: 0 },
+        strict: { type: 'boolean', required: false }
+      },
+      reads: ['pool:queue', 'pool:leases', 'pool:scopes', 'pool:evidence'],
+      writes: [
+        'pool:leases/:leaseKey',
+        artifactRoot + '/acquire-merge-lease.evidence.json',
+        artifactRoot + '/acquire-merge-lease.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'lease', path: 'pool:leases/:leaseKey', required: true },
+        { kind: 'evidence', path: artifactRoot + '/acquire-merge-lease.evidence.json', required: true },
+        { kind: 'log', path: artifactRoot + '/acquire-merge-lease.jsonl', required: true }
+      ],
+      requires: ['continuous-pool.merge.lease'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['continuous-pool', 'coordinator-review', 'lease']
+    },
+    {
+      id: 'continuous-pool.apply-candidate',
+      title: 'Apply candidate',
+      description: 'Apply a candidate from the continuous pool and capture the decision, patch, and evidence trail.',
+      capability: 'continuous-pool.candidate.apply',
+      risk: 'high',
+      input: {
+        candidateId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        leaseKey: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        targetRef: { type: 'string', required: false },
+        dryRunOnly: { type: 'boolean', required: false },
+        requiredChecks: { type: 'array', required: false, items: { type: 'string' } },
+        requiredEvidence: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['pool:candidates', 'pool:reviews', 'pool:verification', 'pool:decisions', 'pool:evidence'],
+      writes: [
+        'pool:decisions',
+        'pool:candidates',
+        artifactRoot + '/apply-candidate.evidence.json',
+        artifactRoot + '/apply-candidate.json',
+        artifactRoot + '/apply-candidate.jsonl',
+        artifactRoot + '/apply-candidate.patch'
+      ],
+      producedArtifacts: [
+        { kind: 'decision', path: artifactRoot + '/apply-candidate.json', required: true },
+        { kind: 'evidence', path: artifactRoot + '/apply-candidate.evidence.json', required: true },
+        { kind: 'log', path: artifactRoot + '/apply-candidate.jsonl', required: true },
+        { kind: 'patch', path: artifactRoot + '/apply-candidate.patch', required: true }
+      ],
+      requires: ['continuous-pool.candidate.apply'],
+      approval: {
+        required: true,
+        reason: 'candidate application changes pool-owned state'
+      },
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['continuous-pool', 'apply', 'merge']
+    },
+    {
+      id: 'continuous-pool.promote-upward',
+      title: 'Promote upward',
+      description: 'Promote a reviewed candidate upward with preserved evidence.',
+      capability: 'continuous-pool.promotion.promote',
+      risk: 'medium',
+      input: {
+        promotionId: { type: 'string', minLength: 1 },
+        candidateId: { type: 'string', minLength: 1 },
+        sourceQueueId: { type: 'string', required: false },
+        targetQueueId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        includeEvidence: { type: 'boolean', required: false }
+      },
+      reads: ['pool:candidates', 'pool:promotions', 'pool:reviews', 'pool:queue', 'pool:evidence'],
+      writes: [
+        'pool:promotions',
+        artifactRoot + '/promote-upward.evidence.json',
+        artifactRoot + '/promote-upward.json',
+        artifactRoot + '/promote-upward.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'evidence', path: artifactRoot + '/promote-upward.evidence.json', required: true },
+        { kind: 'manifest', path: artifactRoot + '/promote-upward.json', required: true },
+        { kind: 'log', path: artifactRoot + '/promote-upward.jsonl', required: true }
+      ],
+      requires: ['continuous-pool.promotion.promote'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['continuous-pool', 'coordinator-review', 'promote']
+    },
+    {
+      id: 'continuous-pool.rerun-stale',
+      title: 'Rerun stale',
+      description: 'Request a fresh review when the current pool evidence is stale or incomplete.',
+      capability: 'continuous-pool.review.rerun',
+      risk: 'medium',
+      input: {
+        reviewId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        sourceCandidateId: { type: 'string', required: false },
+        staleAfterMs: { type: 'integer', required: false, minimum: 0 },
+        reason: { type: 'string', required: false },
+        refreshEvidence: { type: 'boolean', required: false }
+      },
+      reads: ['pool:reviews', 'pool:decisions', 'pool:evidence', 'pool:queue'],
+      writes: [
+        'pool:reruns',
+        artifactRoot + '/rerun-stale.evidence.json',
+        artifactRoot + '/rerun-stale.json',
+        artifactRoot + '/rerun-stale.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'task', path: artifactRoot + '/rerun-stale.json', required: true },
+        { kind: 'evidence', path: artifactRoot + '/rerun-stale.evidence.json', required: true },
+        { kind: 'log', path: artifactRoot + '/rerun-stale.jsonl', required: true }
+      ],
+      requires: ['continuous-pool.review.rerun'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['continuous-pool', 'auto-rerun', 'rerun']
+    },
+    {
+      id: 'continuous-pool.select-next-task-set',
+      title: 'Select next task set',
+      description: 'Select the next task set for a continuous pool from the desired concurrency and selected task-set generation.',
+      capability: 'continuous-pool.task-set.select',
+      risk: 'low',
+      input: {
+        poolId: { type: 'string', minLength: 1 },
+        ...FRONTIER_CONTINUOUS_POOL_TASK_SET_SELECTION_INPUT,
+        scope: { type: 'string', required: false },
+        rerunManifestId: { type: 'string', required: false },
+        backlogId: { type: 'string', required: false },
+        includeEvidence: { type: 'boolean', required: false }
+      },
+      reads: ['pool:queue', 'pool:reviews', 'pool:reruns', 'pool:backlog', 'pool:evidence'],
+      writes: [
+        'pool:task-sets',
+        artifactRoot + '/select-next-task-set.evidence.json',
+        artifactRoot + '/select-next-task-set.json',
+        artifactRoot + '/select-next-task-set.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'task-set', path: artifactRoot + '/select-next-task-set.json', required: true },
+        { kind: 'log', path: artifactRoot + '/select-next-task-set.jsonl', required: true },
+        { kind: 'evidence', path: artifactRoot + '/select-next-task-set.evidence.json', required: true }
+      ],
+      requires: ['continuous-pool.task-set.select'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['continuous-pool', 'selection', 'task-set']
+    },
+    {
+      id: 'continuous-pool.emit-human-question',
+      title: 'Emit human question',
+      description: 'Emit a human question when pool review needs explicit guidance or escalation.',
+      capability: 'continuous-pool.human.ask',
+      risk: 'low',
+      input: {
+        questionId: { type: 'string', minLength: 1 },
+        topic: { type: 'string', minLength: 1 },
+        question: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        candidateId: { type: 'string', required: false },
+        decisionId: { type: 'string', required: false },
+        evidencePaths: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['pool:reviews', 'pool:questions', 'pool:evidence'],
+      writes: [
+        'pool:questions',
+        artifactRoot + '/emit-human-question.evidence.json',
+        artifactRoot + '/emit-human-question.json',
+        artifactRoot + '/emit-human-question-routing.json'
+      ],
+      producedArtifacts: [
+        { kind: 'question', path: artifactRoot + '/emit-human-question.json', required: true },
+        { kind: 'routing', path: artifactRoot + '/emit-human-question-routing.json', required: true },
+        { kind: 'evidence', path: artifactRoot + '/emit-human-question.evidence.json', required: true }
+      ],
+      requires: ['continuous-pool.human.ask'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['continuous-pool', 'human-question', 'question']
+    },
+    {
+      id: 'continuous-pool.consume-answer',
+      title: 'Consume answer',
+      description: 'Consume a human answer and route it back into the continuous pool decision trail.',
+      capability: 'continuous-pool.human.consume',
+      risk: 'low',
+      input: {
+        questionId: { type: 'string', minLength: 1 },
+        answerCode: { type: 'string', minLength: 1 },
+        answer: { type: 'string', required: false },
+        decisionId: { type: 'string', required: false },
+        queueItemId: { type: 'string', required: false },
+        candidateId: { type: 'string', required: false },
+        evidencePaths: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['pool:questions', 'pool:answers', 'pool:decisions', 'pool:evidence'],
+      writes: [
+        'pool:answers',
+        'pool:questions',
+        artifactRoot + '/consume-answer.evidence.json',
+        artifactRoot + '/consume-answer.json',
+        artifactRoot + '/human-answer-routing.json'
+      ],
+      producedArtifacts: [
+        { kind: 'answer', path: artifactRoot + '/consume-answer.json', required: true },
+        { kind: 'routing', path: artifactRoot + '/human-answer-routing.json', required: true },
+        { kind: 'evidence', path: artifactRoot + '/consume-answer.evidence.json', required: true }
+      ],
+      requires: ['continuous-pool.human.consume'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['continuous-pool', 'human-question', 'answer']
+    },
+    {
+      id: 'continuous-pool.refill-backlog',
+      title: 'Refill backlog',
+      description: 'Refill the continuous pool backlog with fresh, promoted, or follow-up review work.',
+      capability: 'continuous-pool.queue.refill',
+      risk: 'medium',
+      input: {
+        poolId: { type: 'string', minLength: 1 },
+        scope: { type: 'string', required: false },
+        targetCount: { type: 'integer', required: false, minimum: 0 },
+        source: { type: 'string', required: false },
+        priorityFloor: { type: 'number', required: false, minimum: 0 },
+        includePromoted: { type: 'boolean', required: false }
+      },
+      reads: ['pool:queue', 'pool:leases', 'pool:promotions', 'pool:reviews', 'pool:evidence'],
+      writes: [
+        'pool:queue',
+        artifactRoot + '/refill-backlog.evidence.json',
+        artifactRoot + '/refill-backlog.json',
+        artifactRoot + '/backlog-refill.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'manifest', path: artifactRoot + '/refill-backlog.json', required: true },
+        { kind: 'log', path: artifactRoot + '/backlog-refill.jsonl', required: true },
+        { kind: 'evidence', path: artifactRoot + '/refill-backlog.evidence.json', required: true }
+      ],
+      requires: ['continuous-pool.queue.refill'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['continuous-pool', 'coordinator-review', 'refill']
+    }
+  ];
+}
+
+export function createContinuousPoolActionManifest(input: FrontierContinuousPoolActionRegistryInput = {}): FrontierToolsManifest {
+  return createToolsManifest({
+    id: input.id ?? FRONTIER_CONTINUOUS_POOL_ACTION_REGISTRY_ID,
+    title: input.title ?? 'Continuous pool actions',
+    package: input.package,
+    feature: input.feature,
+    owner: input.owner,
+    actions: createContinuousPoolActionDescriptors(input),
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'continuous pool action registry metadata')
+  });
+}
+
+export function defineContinuousPoolActions(input: FrontierContinuousPoolActionRegistryInput = {}): FrontierToolsManifest {
+  return createContinuousPoolActionManifest(input);
+}
+
+export interface FrontierBundleRepairActionRegistryInput {
+  id?: string;
+  title?: string;
+  package?: string;
+  feature?: string;
+  owner?: string;
+  artifactRoot?: string;
+  metadata?: unknown;
+}
+
+export const FRONTIER_BUNDLE_REPAIR_ACTION_REGISTRY_ID = 'frontier.tools.bundle-repair-actions';
+export const FRONTIER_BUNDLE_REPAIR_ACTION_IDS = [
+  'bundle-repair.inspect-bundle',
+  'bundle-repair.generate-patch',
+  'bundle-repair.validate-patch',
+  'bundle-repair.mark-no-change',
+  'bundle-repair.request-rerun',
+  'bundle-repair.reject-missing-evidence',
+  'bundle-repair.record-applied-decision'
+] as const;
+
+export function createBundleRepairActionDescriptors(input: FrontierBundleRepairActionRegistryInput = {}): FrontierToolActionInput[] {
+  const artifactRoot = input.artifactRoot === undefined ? 'bundle-repair' : readString(input.artifactRoot, 'bundle repair artifact root');
+  const owner = optionalString(input.owner, 'bundle repair action owner');
+  const packageName = optionalString(input.package, 'bundle repair action package');
+  const feature = optionalString(input.feature, 'bundle repair action feature');
+
+  return [
+    {
+      id: 'bundle-repair.inspect-bundle',
+      title: 'Inspect bundle',
+      description: 'Inspect bundle evidence, patches, and prior decisions before proposing a repair.',
+      capability: 'bundle-repair.bundle.inspect',
+      risk: 'low',
+      input: {
+        bundleId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        includePatch: { type: 'boolean', required: false },
+        includeEvidence: { type: 'boolean', required: false },
+        includeDecisions: { type: 'boolean', required: false },
+        includeMetadata: { type: 'boolean', required: false }
+      },
+      reads: ['bundle:queue', 'bundle:evidence', 'bundle:patches', 'bundle:decisions'],
+      writes: [
+        artifactRoot + '/inspect-bundle.json',
+        artifactRoot + '/inspect-bundle.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'report', path: artifactRoot + '/inspect-bundle.json', required: true },
+        { kind: 'log', path: artifactRoot + '/inspect-bundle.jsonl', required: true }
+      ],
+      requires: ['bundle-repair.bundle.inspect'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['bundle-repair', 'inspect', 'evidence']
+    },
+    {
+      id: 'bundle-repair.generate-patch',
+      title: 'Generate patch',
+      description: 'Generate a repair patch candidate from the inspected bundle evidence.',
+      capability: 'bundle-repair.patch.generate',
+      risk: 'medium',
+      input: {
+        bundleId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        targetRef: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        includeContext: { type: 'boolean', required: false },
+        maxHunks: { type: 'integer', required: false, minimum: 0 },
+        maxChanges: { type: 'integer', required: false, minimum: 0 }
+      },
+      reads: ['bundle:evidence', 'bundle:patches', 'bundle:decisions', 'bundle:validation'],
+      writes: [
+        artifactRoot + '/generate-patch.json',
+        artifactRoot + '/generate-patch.patch',
+        artifactRoot + '/generate-patch.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'report', path: artifactRoot + '/generate-patch.json', required: true },
+        { kind: 'patch', path: artifactRoot + '/generate-patch.patch', required: true },
+        { kind: 'log', path: artifactRoot + '/generate-patch.jsonl', required: true }
+      ],
+      requires: ['bundle-repair.patch.generate'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['bundle-repair', 'patch', 'generate']
+    },
+    {
+      id: 'bundle-repair.validate-patch',
+      title: 'Validate patch',
+      description: 'Validate a generated patch against the bundle evidence and declared repair scope.',
+      capability: 'bundle-repair.patch.validate',
+      risk: 'low',
+      input: {
+        bundleId: { type: 'string', minLength: 1 },
+        patchId: { type: 'string', required: false },
+        patchPath: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        strict: { type: 'boolean', required: false },
+        includeEvidence: { type: 'boolean', required: false },
+        requiredChecks: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['bundle:patches', 'bundle:evidence', 'bundle:decisions'],
+      writes: [
+        artifactRoot + '/validate-patch.json',
+        artifactRoot + '/validate-patch.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'report', path: artifactRoot + '/validate-patch.json', required: true },
+        { kind: 'log', path: artifactRoot + '/validate-patch.jsonl', required: true }
+      ],
+      requires: ['bundle-repair.patch.validate'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['bundle-repair', 'patch', 'validate']
+    },
+    {
+      id: 'bundle-repair.mark-no-change',
+      title: 'Mark no change',
+      description: 'Record that the bundle does not need a repair patch and preserve the decision trail.',
+      capability: 'bundle-repair.decision.no-change',
+      risk: 'low',
+      input: {
+        bundleId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        evidencePaths: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['bundle:evidence', 'bundle:decisions'],
+      writes: [
+        'bundle:decisions',
+        artifactRoot + '/mark-no-change.json',
+        artifactRoot + '/mark-no-change.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'decision', path: artifactRoot + '/mark-no-change.json', required: true },
+        { kind: 'log', path: artifactRoot + '/mark-no-change.jsonl', required: true }
+      ],
+      requires: ['bundle-repair.decision.no-change'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['bundle-repair', 'decision', 'no-change']
+    },
+    {
+      id: 'bundle-repair.request-rerun',
+      title: 'Request rerun',
+      description: 'Request a fresh bundle repair run when the current evidence is stale or incomplete.',
+      capability: 'bundle-repair.bundle.rerun',
+      risk: 'medium',
+      input: {
+        bundleId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        sourceBundleId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        refreshEvidence: { type: 'boolean', required: false },
+        priority: { type: 'number', required: false, minimum: 0 }
+      },
+      reads: ['bundle:queue', 'bundle:evidence', 'bundle:decisions'],
+      writes: [
+        'bundle:reruns',
+        artifactRoot + '/request-rerun.json',
+        artifactRoot + '/request-rerun.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'task', path: artifactRoot + '/request-rerun.json', required: true },
+        { kind: 'manifest', path: artifactRoot + '/request-rerun.jsonl', required: true }
+      ],
+      requires: ['bundle-repair.bundle.rerun'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['bundle-repair', 'rerun', 'queue']
+    },
+    {
+      id: 'bundle-repair.reject-missing-evidence',
+      title: 'Reject missing evidence',
+      description: 'Reject a bundle when required evidence is missing and preserve the rejection trail.',
+      capability: 'bundle-repair.evidence.reject',
+      risk: 'low',
+      input: {
+        bundleId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        missingEvidencePaths: { type: 'array', items: { type: 'string' } },
+        reason: { type: 'string', required: false }
+      },
+      reads: ['bundle:queue', 'bundle:evidence', 'bundle:decisions'],
+      writes: [
+        'bundle:rejections',
+        artifactRoot + '/reject-missing-evidence.json',
+        artifactRoot + '/reject-missing-evidence.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'decision', path: artifactRoot + '/reject-missing-evidence.json', required: true },
+        { kind: 'log', path: artifactRoot + '/reject-missing-evidence.jsonl', required: true }
+      ],
+      requires: ['bundle-repair.evidence.reject'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['bundle-repair', 'decision', 'evidence', 'reject']
+    },
+    {
+      id: 'bundle-repair.record-applied-decision',
+      title: 'Record applied decision',
+      description: 'Record that a bundle repair patch was applied and attach the resulting decision evidence.',
+      capability: 'bundle-repair.decision.record',
+      risk: 'high',
+      input: {
+        bundleId: { type: 'string', minLength: 1 },
+        decisionId: { type: 'string', minLength: 1 },
+        patchId: { type: 'string', required: false },
+        queueItemId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        targetRef: { type: 'string', required: false },
+        note: { type: 'string', required: false },
+        evidencePaths: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['bundle:queue', 'bundle:evidence', 'bundle:decisions', 'bundle:patches'],
+      writes: [
+        'bundle:decisions',
+        'decision:ledger',
+        artifactRoot + '/record-applied-decision.json',
+        artifactRoot + '/record-applied-decision.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'decision', path: artifactRoot + '/record-applied-decision.json', required: true },
+        { kind: 'log', path: artifactRoot + '/record-applied-decision.jsonl', required: true }
+      ],
+      requires: ['bundle-repair.decision.record'],
+      approval: {
+        required: true,
+        reason: 'recording an applied decision mutates the decision ledger'
+      },
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['bundle-repair', 'decision', 'applied']
+    }
+  ];
+}
+
+export function createBundleRepairActionManifest(input: FrontierBundleRepairActionRegistryInput = {}): FrontierToolsManifest {
+  return createToolsManifest({
+    id: input.id ?? FRONTIER_BUNDLE_REPAIR_ACTION_REGISTRY_ID,
+    title: input.title ?? 'Bundle repair actions',
+    package: input.package,
+    feature: input.feature,
+    owner: input.owner,
+    actions: createBundleRepairActionDescriptors(input),
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'bundle repair action registry metadata')
+  });
+}
+
+export function defineBundleRepairActions(input: FrontierBundleRepairActionRegistryInput = {}): FrontierToolsManifest {
+  return createBundleRepairActionManifest(input);
+}
+
+export interface FrontierToolRecordActionRegistryInput {
+  id?: string;
+  title?: string;
+  package?: string;
+  feature?: string;
+  owner?: string;
+  artifactRoot?: string;
+  metadata?: unknown;
+}
+
+export const FRONTIER_TOOL_RECORD_ACTION_REGISTRY_ID = 'frontier.tools.tool-record-actions';
+export const FRONTIER_TOOL_RECORD_ACTION_IDS = [
+  'tool-record.apply',
+  'tool-record.reject',
+  'tool-record.rerun',
+  'tool-record.no-change'
+] as const;
+
+export function createToolRecordActionDescriptors(input: FrontierToolRecordActionRegistryInput = {}): FrontierToolActionInput[] {
+  const artifactRoot = input.artifactRoot === undefined ? 'tool-records' : readString(input.artifactRoot, 'tool record artifact root');
+  const owner = optionalString(input.owner, 'tool record action owner');
+  const packageName = optionalString(input.package, 'tool record action package');
+  const feature = optionalString(input.feature, 'tool record action feature');
+
+  return [
+    {
+      id: 'tool-record.apply',
+      title: 'Apply record',
+      description: 'Describe an accepted outcome as a recordable tool action with the decision trail attached.',
+      capability: 'tool-record.decision.apply',
+      risk: 'high',
+      input: {
+        recordId: { type: 'string', minLength: 1 },
+        targetId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        evidencePaths: { type: 'array', required: false, items: { type: 'string' } },
+        patchPath: { type: 'string', required: false },
+        decisionId: { type: 'string', required: false }
+      },
+      reads: ['tool:records', 'tool:evidence', 'tool:decisions'],
+      writes: [
+        'tool:decisions',
+        'tool:records',
+        artifactRoot + '/apply.json',
+        artifactRoot + '/apply.jsonl',
+        artifactRoot + '/apply.patch'
+      ],
+      producedArtifacts: [
+        { kind: 'decision', path: artifactRoot + '/apply.json', required: true },
+        { kind: 'log', path: artifactRoot + '/apply.jsonl', required: true },
+        { kind: 'patch', path: artifactRoot + '/apply.patch', required: true }
+      ],
+      requires: ['tool-record.decision.apply'],
+      approval: {
+        required: true,
+        reason: 'recording an applied outcome mutates the decision ledger'
+      },
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['tool-record', 'decision', 'apply']
+    },
+    {
+      id: 'tool-record.reject',
+      title: 'Reject record',
+      description: 'Describe a rejected outcome as a recordable tool action and preserve the rejection trail.',
+      capability: 'tool-record.evidence.reject',
+      risk: 'low',
+      input: {
+        recordId: { type: 'string', minLength: 1 },
+        targetId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        evidencePaths: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['tool:records', 'tool:evidence', 'tool:decisions'],
+      writes: [
+        'tool:rejections',
+        artifactRoot + '/reject.json',
+        artifactRoot + '/reject.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'decision', path: artifactRoot + '/reject.json', required: true },
+        { kind: 'log', path: artifactRoot + '/reject.jsonl', required: true }
+      ],
+      requires: ['tool-record.evidence.reject'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['tool-record', 'decision', 'reject']
+    },
+    {
+      id: 'tool-record.rerun',
+      title: 'Request rerun',
+      description: 'Describe a rerun request as a recordable tool action so a fresh pass can be queued.',
+      capability: 'tool-record.record.rerun',
+      risk: 'medium',
+      input: {
+        recordId: { type: 'string', minLength: 1 },
+        targetId: { type: 'string', required: false },
+        sourceRecordId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        refreshEvidence: { type: 'boolean', required: false },
+        priority: { type: 'number', required: false, minimum: 0 }
+      },
+      reads: ['tool:records', 'tool:evidence', 'tool:decisions', 'tool:queue'],
+      writes: [
+        'tool:reruns',
+        artifactRoot + '/rerun.json',
+        artifactRoot + '/rerun-manifest.json'
+      ],
+      producedArtifacts: [
+        { kind: 'task', path: artifactRoot + '/rerun.json', required: true },
+        { kind: 'manifest', path: artifactRoot + '/rerun-manifest.json', required: true }
+      ],
+      requires: ['tool-record.record.rerun'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['tool-record', 'rerun', 'queue']
+    },
+    {
+      id: 'tool-record.no-change',
+      title: 'Mark no change',
+      description: 'Describe a no-change outcome as a recordable tool action and preserve the evidence trail.',
+      capability: 'tool-record.decision.no-change',
+      risk: 'low',
+      input: {
+        recordId: { type: 'string', minLength: 1 },
+        targetId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        evidencePaths: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['tool:records', 'tool:evidence', 'tool:decisions'],
+      writes: [
+        'tool:decisions',
+        artifactRoot + '/no-change.json',
+        artifactRoot + '/no-change.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'decision', path: artifactRoot + '/no-change.json', required: true },
+        { kind: 'log', path: artifactRoot + '/no-change.jsonl', required: true }
+      ],
+      requires: ['tool-record.decision.no-change'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['tool-record', 'decision', 'no-change']
+    }
+  ];
+}
+
+export function createToolRecordActionManifest(input: FrontierToolRecordActionRegistryInput = {}): FrontierToolsManifest {
+  return createToolsManifest({
+    id: input.id ?? FRONTIER_TOOL_RECORD_ACTION_REGISTRY_ID,
+    title: input.title ?? 'Tool record actions',
+    package: input.package,
+    feature: input.feature,
+    owner: input.owner,
+    actions: createToolRecordActionDescriptors(input),
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'tool record action registry metadata')
+  });
+}
+
+export function defineToolRecordActions(input: FrontierToolRecordActionRegistryInput = {}): FrontierToolsManifest {
+  return createToolRecordActionManifest(input);
+}
+
 export interface FrontierCoordinatorActionRegistryInput {
   id?: string;
   title?: string;
@@ -706,6 +1901,7 @@ export const FRONTIER_COORDINATOR_ACTION_IDS = [
   'coordinator.rerun-task',
   'coordinator.record-decision',
   'coordinator.answer-question',
+  'coordinator.submit-answer',
   'coordinator.refill-queue'
 ] as const;
 
@@ -910,6 +2106,40 @@ export function createCoordinatorActionDescriptors(input: FrontierCoordinatorAct
       tags: ['coordinator', 'question', 'answer']
     },
     {
+      id: 'coordinator.submit-answer',
+      title: 'Submit human answer',
+      description: 'Submit a human answer from the dashboard text area and route it back to the queue.',
+      capability: 'coordinator.question.answer',
+      risk: 'low',
+      input: {
+        questionId: { type: 'string', minLength: 1 },
+        answerCode: { type: 'string', minLength: 1 },
+        answer: { type: 'string', required: false },
+        route: { type: 'string', required: false },
+        decisionId: { type: 'string', required: false },
+        queueItemId: { type: 'string', required: false },
+        taskId: { type: 'string', required: false },
+        evidencePaths: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['queue:questions', 'queue:answers', 'queue:decisions', 'queue:evidence'],
+      writes: [
+        'queue:answers',
+        'queue:questions',
+        artifactRoot + '/submit-answer.json',
+        artifactRoot + '/human-answer-routing.json'
+      ],
+      producedArtifacts: [
+        { kind: 'answer', path: artifactRoot + '/submit-answer.json', required: true },
+        { kind: 'routing', path: artifactRoot + '/human-answer-routing.json', required: true }
+      ],
+      requires: ['coordinator.question.answer'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['coordinator', 'question', 'answer', 'submit', 'dashboard']
+    },
+    {
       id: 'coordinator.refill-queue',
       title: 'Refill queue',
       description: 'Refill a coordinator queue with fresh work, follow-ups, or promoted items.',
@@ -957,6 +2187,389 @@ export function createCoordinatorActionManifest(input: FrontierCoordinatorAction
 
 export function defineCoordinatorActions(input: FrontierCoordinatorActionRegistryInput = {}): FrontierToolsManifest {
   return createCoordinatorActionManifest(input);
+}
+
+export interface FrontierGateRunActionRegistryInput {
+  id?: string;
+  title?: string;
+  package?: string;
+  feature?: string;
+  owner?: string;
+  artifactRoot?: string;
+  metadata?: unknown;
+}
+
+export const FRONTIER_GATE_RUN_ACTION_REGISTRY_ID = 'frontier.tools.gate-run-actions';
+export const FRONTIER_GATE_RUN_ACTION_IDS = [
+  'gate-run.run-package-gates',
+  'gate-run.run-local-gates',
+  'gate-run.run-global-gates'
+] as const;
+
+export function createGateRunActionDescriptors(input: FrontierGateRunActionRegistryInput = {}): FrontierToolActionInput[] {
+  const artifactRoot = input.artifactRoot === undefined ? 'gate-run' : readString(input.artifactRoot, 'gate run artifact root');
+  const owner = optionalString(input.owner, 'gate run action owner');
+  const packageName = optionalString(input.package, 'gate run action package');
+  const feature = optionalString(input.feature, 'gate run action feature');
+
+  return [
+    {
+      id: 'gate-run.run-package-gates',
+      title: 'Run package gates',
+      description: 'Run the gate set for a named package and record the package-scoped evidence trail.',
+      capability: 'gate-run.package',
+      risk: 'low',
+      input: {
+        packageName: 'string',
+        packagePath: { type: 'string', required: false },
+        gateIds: { type: 'array', required: false, items: { type: 'string' } },
+        command: { type: 'string', required: false },
+        cwd: { type: 'string', required: false },
+        includeEvidence: { type: 'boolean', required: false },
+        reason: { type: 'string', required: false }
+      },
+      reads: ['package:manifest', 'package:gates', 'package:evidence'],
+      writes: [
+        artifactRoot + '/run-package-gates.json',
+        artifactRoot + '/run-package-gates.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'report', path: artifactRoot + '/run-package-gates.json', required: true },
+        { kind: 'log', path: artifactRoot + '/run-package-gates.jsonl', required: true }
+      ],
+      requires: ['gate-run.package'],
+      approval: {
+        required: false,
+        reason: 'package gate runs only produce verification evidence'
+      },
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['gate-run', 'package', 'gates']
+    },
+    {
+      id: 'gate-run.run-local-gates',
+      title: 'Run local gates',
+      description: 'Run the local workspace gate set and capture the workspace-scoped evidence trail.',
+      capability: 'gate-run.local',
+      risk: 'medium',
+      input: {
+        workspaceRoot: 'string',
+        gateIds: { type: 'array', required: false, items: { type: 'string' } },
+        command: { type: 'string', required: false },
+        cwd: { type: 'string', required: false },
+        includeChangedFiles: { type: 'boolean', required: false },
+        reason: { type: 'string', required: false }
+      },
+      reads: ['workspace:state', 'workspace:gates', 'workspace:evidence'],
+      writes: [
+        artifactRoot + '/run-local-gates.json',
+        artifactRoot + '/run-local-gates.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'report', path: artifactRoot + '/run-local-gates.json', required: true },
+        { kind: 'log', path: artifactRoot + '/run-local-gates.jsonl', required: true }
+      ],
+      requires: ['gate-run.local'],
+      approval: {
+        required: false,
+        reason: 'local gate runs only record workspace verification evidence'
+      },
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['gate-run', 'local', 'gates']
+    },
+    {
+      id: 'gate-run.run-global-gates',
+      title: 'Run global gates',
+      description: 'Run repository-wide gates and capture the global verification evidence trail.',
+      capability: 'gate-run.global',
+      risk: 'high',
+      input: {
+        repoRoot: 'string',
+        gateIds: { type: 'array', required: false, items: { type: 'string' } },
+        command: { type: 'string', required: false },
+        packageGlobs: { type: 'array', required: false, items: { type: 'string' } },
+        includePackageManifests: { type: 'boolean', required: false },
+        reason: { type: 'string', required: false }
+      },
+      reads: ['repo:gates', 'repo:manifests', 'repo:evidence'],
+      writes: [
+        'repo:gate-summary',
+        artifactRoot + '/run-global-gates.json',
+        artifactRoot + '/run-global-gates.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'report', path: artifactRoot + '/run-global-gates.json', required: true },
+        { kind: 'log', path: artifactRoot + '/run-global-gates.jsonl', required: true }
+      ],
+      requires: ['gate-run.global'],
+      approval: {
+        required: true,
+        reason: 'global gate runs cover repository-wide verification'
+      },
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['gate-run', 'global', 'gates']
+    }
+  ];
+}
+
+export function createGateRunActionManifest(input: FrontierGateRunActionRegistryInput = {}): FrontierToolsManifest {
+  return createToolsManifest({
+    id: input.id ?? FRONTIER_GATE_RUN_ACTION_REGISTRY_ID,
+    title: input.title ?? 'Gate run actions',
+    package: input.package,
+    feature: input.feature,
+    owner: input.owner,
+    actions: createGateRunActionDescriptors(input),
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'gate run action registry metadata')
+  });
+}
+
+export function defineGateRunActions(input: FrontierGateRunActionRegistryInput = {}): FrontierToolsManifest {
+  return createGateRunActionManifest(input);
+}
+
+export interface FrontierGateBackedDrainActionRegistryInput {
+  id?: string;
+  title?: string;
+  package?: string;
+  feature?: string;
+  owner?: string;
+  artifactRoot?: string;
+  metadata?: unknown;
+}
+
+export const FRONTIER_GATE_BACKED_DRAIN_ACTION_REGISTRY_ID = 'frontier.tools.gate-backed-drain-actions';
+export const FRONTIER_GATE_BACKED_DRAIN_ACTION_IDS = [
+  'gate-backed-drain.select-default-gates',
+  'gate-backed-drain.apply-with-gates',
+  'gate-backed-drain.route-gate-failure',
+  'gate-backed-drain.request-missing-gate-rerun',
+  'gate-backed-drain.record-decision-ledger'
+] as const;
+
+export function createGateBackedDrainActionDescriptors(input: FrontierGateBackedDrainActionRegistryInput = {}): FrontierToolActionInput[] {
+  const artifactRoot = input.artifactRoot === undefined ? 'gate-backed-drain' : readString(input.artifactRoot, 'gate backed drain artifact root');
+  const owner = optionalString(input.owner, 'gate backed drain action owner');
+  const packageName = optionalString(input.package, 'gate backed drain action package');
+  const feature = optionalString(input.feature, 'gate backed drain action feature');
+
+  return [
+    {
+      id: 'gate-backed-drain.select-default-gates',
+      title: 'Select default gates',
+      description: 'Select the default gate set for an autodrain candidate before any apply step.',
+      capability: 'gate-backed-drain.gates.select-default',
+      risk: 'low',
+      input: {
+        drainId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        availableGateIds: { type: 'array', required: false, items: { type: 'string' } },
+        defaultGateSetId: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        includeEvidence: { type: 'boolean', required: false }
+      },
+      reads: ['drain:queue', 'drain:gates', 'drain:evidence', 'drain:decisions'],
+      writes: [
+        artifactRoot + '/select-default-gates.json',
+        artifactRoot + '/select-default-gates.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'report', path: artifactRoot + '/select-default-gates.json', required: true },
+        { kind: 'log', path: artifactRoot + '/select-default-gates.jsonl', required: true }
+      ],
+      requires: ['gate-backed-drain.gates.select-default'],
+      approval: {
+        required: false,
+        reason: 'default gate selection only produces a routing plan'
+      },
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['gate-backed-drain', 'gate-selection', 'default']
+    },
+    {
+      id: 'gate-backed-drain.apply-with-gates',
+      title: 'Apply with gates',
+      description: 'Apply an autodrain result only after the declared gates are satisfied; this is not a blind apply.',
+      capability: 'gate-backed-drain.apply',
+      risk: 'high',
+      input: {
+        drainId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        gateSetId: { type: 'string', required: false },
+        requiredGateIds: { type: 'array', items: { type: 'string' } },
+        gateEvidencePaths: { type: 'array', required: false, items: { type: 'string' } },
+        targetRef: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        dryRunOnly: { type: 'boolean', required: false },
+        strict: { type: 'boolean', required: false }
+      },
+      reads: ['drain:queue', 'drain:gates', 'drain:evidence', 'drain:patches', 'drain:verification', 'drain:decisions'],
+      writes: [
+        'drain:changes',
+        artifactRoot + '/apply-with-gates.json',
+        artifactRoot + '/apply-with-gates.jsonl',
+        artifactRoot + '/apply-with-gates.patch'
+      ],
+      producedArtifacts: [
+        { kind: 'decision', path: artifactRoot + '/apply-with-gates.json', required: true },
+        { kind: 'log', path: artifactRoot + '/apply-with-gates.jsonl', required: true },
+        { kind: 'patch', path: artifactRoot + '/apply-with-gates.patch', required: true }
+      ],
+      requires: ['gate-backed-drain.apply'],
+      approval: {
+        required: true,
+        reason: 'gate-backed apply mutates queue-owned state after policy gates are satisfied'
+      },
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['gate-backed-drain', 'apply', 'gated']
+    },
+    {
+      id: 'gate-backed-drain.route-gate-failure',
+      title: 'Route gate failure',
+      description: 'Route a failed gate outcome to the next queue state without applying the drain.',
+      capability: 'gate-backed-drain.failure.route',
+      risk: 'medium',
+      input: {
+        drainId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        gateId: { type: 'string', required: false },
+        gateSetId: { type: 'string', required: false },
+        failureCode: { type: 'string', required: false },
+        failureReason: { type: 'string', required: false },
+        rerouteTo: { type: 'string', required: false },
+        preserveEvidence: { type: 'boolean', required: false },
+        severity: { type: 'string', required: false }
+      },
+      reads: ['drain:queue', 'drain:gates', 'drain:evidence', 'drain:decisions'],
+      writes: [
+        'drain:gate-failures',
+        'drain:routing',
+        artifactRoot + '/route-gate-failure.json',
+        artifactRoot + '/route-gate-failure.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'routing', path: artifactRoot + '/route-gate-failure.json', required: true },
+        { kind: 'log', path: artifactRoot + '/route-gate-failure.jsonl', required: true }
+      ],
+      requires: ['gate-backed-drain.failure.route'],
+      approval: {
+        required: false,
+        reason: 'failure routing records the outcome without applying changes'
+      },
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['gate-backed-drain', 'failure', 'routing']
+    },
+    {
+      id: 'gate-backed-drain.request-missing-gate-rerun',
+      title: 'Request missing gate rerun',
+      description: 'Request a fresh drain rerun when required gates are missing from the current evidence set.',
+      capability: 'gate-backed-drain.gate.rerun',
+      risk: 'medium',
+      input: {
+        drainId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        missingGateIds: { type: 'array', items: { type: 'string' } },
+        gateSetId: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        refreshEvidence: { type: 'boolean', required: false },
+        priority: { type: 'number', required: false, minimum: 0 }
+      },
+      reads: ['drain:queue', 'drain:gates', 'drain:evidence', 'drain:decisions'],
+      writes: [
+        'drain:reruns',
+        artifactRoot + '/request-missing-gate-rerun.json',
+        artifactRoot + '/request-missing-gate-rerun.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'task', path: artifactRoot + '/request-missing-gate-rerun.json', required: true },
+        { kind: 'manifest', path: artifactRoot + '/request-missing-gate-rerun.jsonl', required: true }
+      ],
+      requires: ['gate-backed-drain.gate.rerun'],
+      approval: {
+        required: false,
+        reason: 'requesting a rerun only requeues work for missing gates'
+      },
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['gate-backed-drain', 'rerun', 'missing-gate']
+    },
+    {
+      id: 'gate-backed-drain.record-decision-ledger',
+      title: 'Record decision ledger',
+      description: 'Record the terminal gate-backed drain decision and attach the decision evidence.',
+      capability: 'gate-backed-drain.decision.record',
+      risk: 'high',
+      input: {
+        drainId: { type: 'string', minLength: 1 },
+        decisionId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        gateSetId: { type: 'string', required: false },
+        targetRef: { type: 'string', required: false },
+        status: { type: 'string', minLength: 1 },
+        note: { type: 'string', required: false },
+        evidencePaths: { type: 'array', required: false, items: { type: 'string' } },
+        gateIds: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['drain:queue', 'drain:gates', 'drain:decisions', 'drain:evidence'],
+      writes: [
+        'decision:ledger',
+        artifactRoot + '/record-decision-ledger.json',
+        artifactRoot + '/record-decision-ledger.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'decision', path: artifactRoot + '/record-decision-ledger.json', required: true },
+        { kind: 'log', path: artifactRoot + '/record-decision-ledger.jsonl', required: true }
+      ],
+      requires: ['gate-backed-drain.decision.record'],
+      approval: {
+        required: true,
+        reason: 'recording the drain decision mutates the decision ledger'
+      },
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['gate-backed-drain', 'decision', 'ledger']
+    }
+  ];
+}
+
+export function createGateBackedDrainActionManifest(input: FrontierGateBackedDrainActionRegistryInput = {}): FrontierToolsManifest {
+  return createToolsManifest({
+    id: input.id ?? FRONTIER_GATE_BACKED_DRAIN_ACTION_REGISTRY_ID,
+    title: input.title ?? 'Gate-backed drain actions',
+    package: input.package,
+    feature: input.feature,
+    owner: input.owner,
+    actions: createGateBackedDrainActionDescriptors(input),
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'gate backed drain action registry metadata')
+  });
+}
+
+export function defineGateBackedDrainActions(input: FrontierGateBackedDrainActionRegistryInput = {}): FrontierToolsManifest {
+  return createGateBackedDrainActionManifest(input);
 }
 
 export interface FrontierModelRoutingActionRegistryInput {
@@ -1161,6 +2774,140 @@ export function createModelRoutingActionManifest(input: FrontierModelRoutingActi
 
 export function defineModelRoutingActions(input: FrontierModelRoutingActionRegistryInput = {}): FrontierToolsManifest {
   return createModelRoutingActionManifest(input);
+}
+
+export interface FrontierModelRoutingPolicyOverrideActionRegistryInput {
+  id?: string;
+  title?: string;
+  package?: string;
+  feature?: string;
+  owner?: string;
+  artifactRoot?: string;
+  metadata?: unknown;
+}
+
+export const FRONTIER_MODEL_ROUTING_POLICY_OVERRIDE_ACTION_REGISTRY_ID = 'frontier.tools.model-routing-policy-override-actions';
+export const FRONTIER_MODEL_ROUTING_POLICY_OVERRIDE_ACTION_IDS = [
+  'model-routing.preview-policy-override',
+  'model-routing.request-policy-override'
+] as const;
+export const FRONTIER_SAFE_MODEL_ROUTING_POLICY_OVERRIDE_ACTION_REGISTRY_ID = FRONTIER_MODEL_ROUTING_POLICY_OVERRIDE_ACTION_REGISTRY_ID;
+export const FRONTIER_SAFE_MODEL_ROUTING_POLICY_OVERRIDE_ACTION_IDS = FRONTIER_MODEL_ROUTING_POLICY_OVERRIDE_ACTION_IDS;
+
+export function createModelRoutingPolicyOverrideActionDescriptors(input: FrontierModelRoutingPolicyOverrideActionRegistryInput = {}): FrontierToolActionInput[] {
+  const artifactRoot = input.artifactRoot === undefined ? 'model-routing-policy-override' : readString(input.artifactRoot, 'model routing policy override artifact root');
+  const owner = optionalString(input.owner, 'model routing policy override action owner');
+  const packageName = optionalString(input.package, 'model routing policy override action package');
+  const feature = optionalString(input.feature, 'model routing policy override action feature');
+
+  return [
+    {
+      id: 'model-routing.preview-policy-override',
+      title: 'Preview policy override',
+      description: 'Preview a proposed model-policy override and capture the expected routing impact without mutating policy state.',
+      capability: 'model-routing.policy.override.preview',
+      risk: 'low',
+      input: {
+        overrideId: { type: 'string', minLength: 1 },
+        policyName: { type: 'string', required: false },
+        currentPolicy: { type: 'string', required: false },
+        nextPolicy: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        modelId: { type: 'string', required: false },
+        tierId: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        effectiveAt: { type: 'string', required: false },
+        expiresAt: { type: 'string', required: false },
+        includeSignals: { type: 'boolean', required: false },
+        includeRecommendations: { type: 'boolean', required: false }
+      },
+      reads: ['model-routing:policies', 'model-routing:decisions', 'model-routing:signals', 'model-routing:budgets'],
+      writes: [
+        artifactRoot + '/preview-policy-override.json',
+        artifactRoot + '/preview-policy-override.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'report', path: artifactRoot + '/preview-policy-override.json', required: true },
+        { kind: 'log', path: artifactRoot + '/preview-policy-override.jsonl', required: true }
+      ],
+      requires: ['model-routing.policy.override.preview'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['model-routing', 'policy', 'override', 'preview']
+    },
+    {
+      id: 'model-routing.request-policy-override',
+      title: 'Request policy override',
+      description: 'Request a reviewed model-policy override and record the pending change for approval.',
+      capability: 'model-routing.policy.override.request',
+      risk: 'medium',
+      input: {
+        overrideId: { type: 'string', minLength: 1 },
+        policyName: { type: 'string', required: false },
+        currentPolicy: { type: 'string', required: false },
+        nextPolicy: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        modelId: { type: 'string', required: false },
+        tierId: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        effectiveAt: { type: 'string', required: false },
+        expiresAt: { type: 'string', required: false },
+        includeSignals: { type: 'boolean', required: false },
+        includeRecommendations: { type: 'boolean', required: false },
+        approvalNote: { type: 'string', required: false }
+      },
+      reads: ['model-routing:policies', 'model-routing:policy-overrides', 'model-routing:decisions', 'model-routing:signals'],
+      writes: [
+        'model-routing:policy-override-requests',
+        artifactRoot + '/request-policy-override.json',
+        artifactRoot + '/request-policy-override.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'request', path: artifactRoot + '/request-policy-override.json', required: true },
+        { kind: 'log', path: artifactRoot + '/request-policy-override.jsonl', required: true }
+      ],
+      requires: ['model-routing.policy.override.request'],
+      approval: {
+        required: true,
+        reason: 'model policy overrides change routing behavior and require review'
+      },
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['model-routing', 'policy', 'override', 'request']
+    }
+  ];
+}
+
+export function createSafeModelRoutingPolicyOverrideActionDescriptors(input: FrontierModelRoutingPolicyOverrideActionRegistryInput = {}): FrontierToolActionInput[] {
+  return createModelRoutingPolicyOverrideActionDescriptors(input);
+}
+
+export function createModelRoutingPolicyOverrideActionManifest(input: FrontierModelRoutingPolicyOverrideActionRegistryInput = {}): FrontierToolsManifest {
+  return createToolsManifest({
+    id: input.id ?? FRONTIER_MODEL_ROUTING_POLICY_OVERRIDE_ACTION_REGISTRY_ID,
+    title: input.title ?? 'Model routing policy override actions',
+    package: input.package,
+    feature: input.feature,
+    owner: input.owner,
+    actions: createModelRoutingPolicyOverrideActionDescriptors(input),
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'model routing policy override action registry metadata')
+  });
+}
+
+export function createSafeModelRoutingPolicyOverrideActionManifest(input: FrontierModelRoutingPolicyOverrideActionRegistryInput = {}): FrontierToolsManifest {
+  return createModelRoutingPolicyOverrideActionManifest(input);
+}
+
+export function defineModelRoutingPolicyOverrideActions(input: FrontierModelRoutingPolicyOverrideActionRegistryInput = {}): FrontierToolsManifest {
+  return createModelRoutingPolicyOverrideActionManifest(input);
+}
+
+export function defineSafeModelRoutingPolicyOverrideActions(input: FrontierModelRoutingPolicyOverrideActionRegistryInput = {}): FrontierToolsManifest {
+  return createModelRoutingPolicyOverrideActionManifest(input);
 }
 
 export function compileTools(
