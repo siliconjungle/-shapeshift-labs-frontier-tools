@@ -3,6 +3,7 @@
 Serializable action and tool manifests for agent-operable Frontier apps.
 
 `frontier-tools` turns app affordances into data: what an action reads, writes, validates, requires, previews, rolls back, exposes to AI tools, and records after execution. It is not an agent runtime and it does not import MCP, OpenAI, LangChain, Vercel AI SDK, policy, route, view, trace, or mutation packages. Those systems can attach through structural adapters.
+It also ships a structural coordinator registry for queue inspection, scope leasing, bundle application, reruns, decision recording, question answering, and queue refill.
 
 ## Related Packages
 
@@ -266,6 +267,7 @@ const record = executeToolAction(tools, {
 
 - `createToolsManifest`, `defineTools`, and `defineToolAction` normalize serializable action manifests.
 - `createAgentTaskDescriptor` and `defineAgentTaskDescriptor` normalize queue-ready AI task descriptors with capabilities, declared reads/writes, expected artifacts, safety policy, and result status.
+- `createCoordinatorActionDescriptors`, `createCoordinatorActionManifest`, and `defineCoordinatorActions` provide a ready-made runtime-neutral coordinator action registry with inspect, lease, apply, rerun, record, answer, and refill descriptors.
 - `compileTools` indexes actions for repeated availability checks, descriptors, plans, and queries.
 - `validateToolInput` validates JSON-schema-shaped inputs without adding runtime validator dependencies.
 - `planToolAction` and `planToolActionAsync` return policy-aware dry-run plans with expected patch previews.
@@ -273,6 +275,8 @@ const record = executeToolAction(tools, {
 - `createToolDescriptor` and `createToolDescriptors` emit Frontier, OpenAI-style, MCP-style, Vercel-style, and LangChain-style tool descriptor data.
 - `createToolsRegistryGraph` and `traceToolsImpact` expose actions to Frontier registry and impact queries.
 - `createToolsSession`, `encodeToolsJsonl`, `decodeToolsJsonl`, `redactToolsManifest`, and `createToolsProof` support replay, audit, redaction, and evidence bundles.
+
+Coordinator action descriptors carry declared reads and writes, a primary capability, a risk label, dry-run support, and produced decision artifacts so queue systems can classify work without importing a runner.
 
 ## Policy Bridge
 

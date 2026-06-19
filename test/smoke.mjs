@@ -2,6 +2,8 @@ import assert from 'node:assert';
 import {
   appendToolSessionRecord,
   compileTools,
+  createCoordinatorActionDescriptors,
+  createCoordinatorActionManifest,
   createAgentTaskDescriptor,
   createToolDescriptor,
   createToolDescriptors,
@@ -232,3 +234,33 @@ const jsonl = encodeToolsJsonl([plan, record]);
 assert.strictEqual(decodeToolsJsonl(jsonl).length, 2);
 assert.notStrictEqual(createToolsProof(manifest).hash.length, 0);
 assert.strictEqual(JSON.stringify(redactToolsManifest(manifest)).includes('secret'), false);
+
+const coordinatorDescriptors = createCoordinatorActionDescriptors({
+  id: 'coordinator.tools',
+  package: '@app/coordinator',
+  feature: 'autonomous-merge',
+  owner: 'coordinator',
+  artifactRoot: 'evidence/coordinator'
+});
+assert.strictEqual(coordinatorDescriptors.length, 7);
+assert.ok(coordinatorDescriptors.every((action) => action.dryRun === true));
+assert.strictEqual(coordinatorDescriptors.some((action) => action.producedArtifacts.length > 0), true);
+
+const coordinatorManifest = createCoordinatorActionManifest({
+  id: 'coordinator.tools',
+  package: '@app/coordinator',
+  feature: 'autonomous-merge',
+  owner: 'coordinator',
+  artifactRoot: 'evidence/coordinator'
+});
+const coordinatorCompiler = compileTools(coordinatorManifest);
+const coordinatorContext = { capabilities: coordinatorManifest.capabilities };
+const coordinatorAvailable = createToolDescriptors(coordinatorCompiler, coordinatorContext, { format: 'frontier' });
+assert.strictEqual(coordinatorManifest.summary.actionCount, 7);
+assert.strictEqual(coordinatorManifest.summary.approvalCount, 1);
+assert.strictEqual(coordinatorManifest.summary.dryRunCount, 7);
+assert.strictEqual(coordinatorAvailable.length, 7);
+assert.strictEqual(coordinatorCompiler.get('coordinator.apply-bundle').risk, 'high');
+assert.strictEqual(coordinatorCompiler.get('coordinator.answer-question').capability, 'coordinator.question.answer');
+assert.ok(coordinatorCompiler.get('coordinator.apply-bundle').producedArtifacts.some((artifact) => artifact.kind === 'decision'));
+assert.strictEqual(createToolDescriptor(coordinatorCompiler.get('coordinator.apply-bundle'), { format: 'frontier' }).risk, 'high');
