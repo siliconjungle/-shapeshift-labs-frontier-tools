@@ -2,6 +2,11 @@ import assert from 'node:assert';
 import {
   appendToolSessionRecord,
   compileTools,
+  createCoordinatorActionDescriptors,
+  createCoordinatorActionManifest,
+  createAgentTaskDescriptor,
+  createModelRoutingActionDescriptors,
+  createModelRoutingActionManifest,
   createToolDescriptor,
   createToolDescriptors,
   createToolRecord,
@@ -80,6 +85,39 @@ assert.strictEqual(defineToolAction({ id: 'x.y' }).title, 'Y');
 assert.strictEqual(manifest.summary.actionCount, 3);
 assert.strictEqual(manifest.summary.dryRunCount, 1);
 assert.strictEqual(manifest.summary.rollbackCount, 1);
+
+const agentTask = createAgentTaskDescriptor({
+  id: 'todos.audit-export',
+  capability: 'todo.audit',
+  reads: ['entities.todos', 'entities.todos'],
+  writes: ['agent-runs/todos-audit/evidence'],
+  expectedArtifacts: [
+    { kind: 'patch', path: 'changes.patch', required: true },
+    { kind: 'evidence', path: 'evidence/evidence.json', metadata: { dashboard: true } }
+  ],
+  safetyPolicy: {
+    approvalRequired: true,
+    sandbox: 'workspace',
+    network: 'none',
+    secrets: 'none',
+    allowedCommands: ['npm --prefix packages/frontier-tools run test'],
+    maxRuntimeMs: 120000
+  },
+  status: 'queued'
+});
+assert.strictEqual(agentTask.kind, 'frontier.tools.agent-task');
+assert.strictEqual(agentTask.title, 'Audit Export');
+assert.strictEqual(agentTask.capability, 'todo.audit');
+assert.deepStrictEqual(agentTask.reads, ['entities.todos']);
+assert.deepStrictEqual(agentTask.writes, ['agent-runs/todos-audit/evidence']);
+assert.strictEqual(agentTask.expectedArtifacts.length, 2);
+assert.strictEqual(agentTask.expectedArtifacts[1].metadata.dashboard, true);
+assert.strictEqual(agentTask.safetyPolicy.approvalRequired, true);
+assert.strictEqual(agentTask.safetyPolicy.destructive, true);
+assert.deepStrictEqual(agentTask.safetyPolicy.requires, ['todo.audit']);
+assert.ok(agentTask.safetyPolicy.policyResources.includes('task:todos.audit-export'));
+assert.strictEqual(agentTask.safetyPolicy.maxRuntimeMs, 120000);
+assert.strictEqual(agentTask.status, 'queued');
 
 const compiler = compileTools(manifest);
 assert.strictEqual(compiler.get('todos.complete').id, 'todos.complete');
@@ -198,3 +236,68 @@ const jsonl = encodeToolsJsonl([plan, record]);
 assert.strictEqual(decodeToolsJsonl(jsonl).length, 2);
 assert.notStrictEqual(createToolsProof(manifest).hash.length, 0);
 assert.strictEqual(JSON.stringify(redactToolsManifest(manifest)).includes('secret'), false);
+
+const coordinatorDescriptors = createCoordinatorActionDescriptors({
+  id: 'coordinator.tools',
+  package: '@app/coordinator',
+  feature: 'autonomous-merge',
+  owner: 'coordinator',
+  artifactRoot: 'evidence/coordinator'
+});
+assert.strictEqual(coordinatorDescriptors.length, 7);
+assert.ok(coordinatorDescriptors.every((action) => action.dryRun === true));
+assert.strictEqual(coordinatorDescriptors.some((action) => action.producedArtifacts.length > 0), true);
+
+const coordinatorManifest = createCoordinatorActionManifest({
+  id: 'coordinator.tools',
+  package: '@app/coordinator',
+  feature: 'autonomous-merge',
+  owner: 'coordinator',
+  artifactRoot: 'evidence/coordinator'
+});
+const coordinatorCompiler = compileTools(coordinatorManifest);
+const coordinatorContext = { capabilities: coordinatorManifest.capabilities };
+const coordinatorAvailable = createToolDescriptors(coordinatorCompiler, coordinatorContext, { format: 'frontier' });
+assert.strictEqual(coordinatorManifest.summary.actionCount, 7);
+assert.strictEqual(coordinatorManifest.summary.approvalCount, 1);
+assert.strictEqual(coordinatorManifest.summary.dryRunCount, 7);
+assert.strictEqual(coordinatorAvailable.length, 7);
+assert.strictEqual(coordinatorCompiler.get('coordinator.apply-bundle').risk, 'high');
+assert.strictEqual(coordinatorCompiler.get('coordinator.answer-question').capability, 'coordinator.question.answer');
+assert.ok(coordinatorCompiler.get('coordinator.apply-bundle').producedArtifacts.some((artifact) => artifact.kind === 'decision'));
+assert.strictEqual(createToolDescriptor(coordinatorCompiler.get('coordinator.apply-bundle'), { format: 'frontier' }).risk, 'high');
+
+const modelRoutingDescriptors = createModelRoutingActionDescriptors({
+  id: 'model-routing.tools',
+  package: '@app/model-routing',
+  feature: 'adaptive-routing',
+  owner: 'routing',
+  artifactRoot: 'evidence/model-routing'
+});
+assert.strictEqual(modelRoutingDescriptors.length, 5);
+assert.ok(modelRoutingDescriptors.every((action) => action.dryRun === true));
+assert.deepStrictEqual(modelRoutingDescriptors[0].reads, ['model-routing:routes', 'model-routing:decisions', 'model-routing:signals', 'model-routing:budgets']);
+assert.deepStrictEqual(modelRoutingDescriptors[0].writes, [
+  'evidence/model-routing/explain-routing.json',
+  'evidence/model-routing/explain-routing.jsonl'
+]);
+assert.strictEqual(modelRoutingDescriptors[1].capability, 'model-routing.tiers.compare');
+assert.strictEqual(modelRoutingDescriptors[2].risk, 'medium');
+assert.ok(modelRoutingDescriptors[3].writes.includes('evidence/model-routing/outcome-feedback.json'));
+assert.ok(modelRoutingDescriptors[4].producedArtifacts.some((artifact) => artifact.kind === 'manifest'));
+
+const modelRoutingManifest = createModelRoutingActionManifest({
+  id: 'model-routing.tools',
+  package: '@app/model-routing',
+  feature: 'adaptive-routing',
+  owner: 'routing',
+  artifactRoot: 'evidence/model-routing'
+});
+const modelRoutingCompiler = compileTools(modelRoutingManifest);
+const modelRoutingDescriptorsOut = createToolDescriptors(modelRoutingCompiler, { capabilities: modelRoutingManifest.capabilities }, { format: 'frontier' });
+assert.strictEqual(modelRoutingManifest.summary.actionCount, 5);
+assert.strictEqual(modelRoutingManifest.summary.dryRunCount, 5);
+assert.strictEqual(modelRoutingManifest.summary.approvalCount, 0);
+assert.strictEqual(modelRoutingCompiler.get('model-routing.request-tournament-rerun').capability, 'model-routing.tournament.rerun');
+assert.strictEqual(createToolDescriptor(modelRoutingCompiler.get('model-routing.explain-routing'), { format: 'frontier' }).risk, 'low');
+assert.strictEqual(modelRoutingDescriptorsOut.length, 5);

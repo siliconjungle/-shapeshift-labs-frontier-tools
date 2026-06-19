@@ -1,6 +1,0 @@
-node_modules/
-dist/
-*.tgz
-benchmarks/results/
-coverage/
-.DS_Store

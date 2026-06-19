@@ -30,11 +30,14 @@ export const FRONTIER_TOOLS_IMPACT_KIND = 'frontier.tools.impact';
 export const FRONTIER_TOOLS_IMPACT_VERSION = 1;
 export const FRONTIER_TOOLS_PROOF_KIND = 'frontier.tools.proof';
 export const FRONTIER_TOOLS_PROOF_VERSION = 1;
+export const FRONTIER_AGENT_TASK_DESCRIPTOR_KIND = 'frontier.tools.agent-task';
+export const FRONTIER_AGENT_TASK_DESCRIPTOR_VERSION = 1;
 
 export type FrontierToolsMaybePromise<T> = T | Promise<T>;
 export type FrontierToolInputPrimitive = 'string' | 'number' | 'integer' | 'boolean' | 'object' | 'array' | 'null';
 export type FrontierToolDescriptorFormat = 'frontier' | 'openai' | 'mcp' | 'vercel' | 'langchain';
 export type FrontierToolExecutionStatus = 'ok' | 'planned' | 'dry-run' | 'blocked' | 'invalid' | 'error' | string;
+export type FrontierAgentTaskResultStatus = 'todo' | 'queued' | 'running' | 'planned' | 'dry-run' | 'blocked' | 'invalid' | 'ok' | 'error' | 'cancelled' | string;
 export type FrontierToolJsonSchema = JsonObject;
 
 export interface FrontierToolSourceInput {
@@ -64,6 +67,116 @@ export interface FrontierToolInputFieldInput {
 }
 
 export type FrontierToolInputShape = Record<string, FrontierToolInputPrimitive | FrontierToolInputFieldInput | FrontierToolJsonSchema>;
+
+export type FrontierToolRisk = 'low' | 'medium' | 'high' | 'critical' | string;
+
+export interface FrontierToolArtifactRecordInput {
+  id?: string;
+  kind?: string;
+  path?: string;
+  description?: string;
+  required?: boolean;
+  metadata?: unknown;
+}
+
+export type FrontierToolArtifactInput = string | FrontierToolArtifactRecordInput;
+
+export interface FrontierToolArtifact {
+  id: string;
+  kind: string;
+  path?: string;
+  description?: string;
+  required: boolean;
+  metadata?: JsonObject;
+}
+
+export interface FrontierAgentTaskArtifactRecordInput {
+  id?: string;
+  kind?: string;
+  path?: string;
+  description?: string;
+  required?: boolean;
+  metadata?: unknown;
+}
+
+export type FrontierAgentTaskArtifactInput = string | FrontierAgentTaskArtifactRecordInput;
+
+export interface FrontierAgentTaskArtifact {
+  id: string;
+  kind: string;
+  path?: string;
+  description?: string;
+  required: boolean;
+  metadata?: JsonObject;
+}
+
+export interface FrontierAgentTaskSafetyPolicyInput {
+  approvalRequired?: boolean;
+  approvalMode?: 'always' | 'policy' | 'never' | string;
+  destructive?: boolean;
+  sandbox?: 'none' | 'workspace' | 'process' | 'browser' | string;
+  network?: 'none' | 'restricted' | 'allowed' | string;
+  secrets?: 'none' | 'redacted' | 'read' | 'write' | string;
+  allowedCommands?: readonly string[];
+  deniedCommands?: readonly string[];
+  requires?: readonly string[];
+  policyResources?: readonly string[];
+  maxRuntimeMs?: number;
+  metadata?: unknown;
+}
+
+export interface FrontierAgentTaskSafetyPolicy {
+  approvalRequired: boolean;
+  approvalMode: string;
+  destructive: boolean;
+  sandbox: string;
+  network: string;
+  secrets: string;
+  allowedCommands: string[];
+  deniedCommands: string[];
+  requires: string[];
+  policyResources: string[];
+  maxRuntimeMs?: number;
+  metadata?: JsonObject;
+}
+
+export interface FrontierAgentTaskDescriptorInput {
+  id: string;
+  capability: string;
+  title?: string;
+  description?: string;
+  reads?: readonly string[];
+  writes?: readonly string[];
+  expectedArtifacts?: readonly FrontierAgentTaskArtifactInput[];
+  safetyPolicy?: FrontierAgentTaskSafetyPolicyInput;
+  status?: FrontierAgentTaskResultStatus;
+  owner?: string;
+  package?: string;
+  feature?: string;
+  tags?: readonly string[];
+  source?: FrontierRegistrySource | FrontierToolSourceInput;
+  metadata?: unknown;
+}
+
+export interface FrontierAgentTaskDescriptor {
+  kind: typeof FRONTIER_AGENT_TASK_DESCRIPTOR_KIND;
+  version: typeof FRONTIER_AGENT_TASK_DESCRIPTOR_VERSION;
+  id: string;
+  capability: string;
+  title: string;
+  description?: string;
+  reads: string[];
+  writes: string[];
+  expectedArtifacts: FrontierAgentTaskArtifact[];
+  safetyPolicy: FrontierAgentTaskSafetyPolicy;
+  status: FrontierAgentTaskResultStatus;
+  owner?: string;
+  package?: string;
+  feature?: string;
+  tags: string[];
+  source?: FrontierRegistrySource;
+  metadata?: JsonObject;
+}
 
 export interface FrontierToolPatchTemplateInput {
   op?: string;
@@ -117,10 +230,13 @@ export interface FrontierToolActionInput {
   id: string;
   title?: string;
   description?: string;
+  capability?: string;
+  risk?: FrontierToolRisk;
   input?: FrontierToolInputShape;
   inputSchema?: FrontierToolJsonSchema;
   reads?: readonly string[];
   writes?: readonly string[];
+  producedArtifacts?: readonly FrontierToolArtifactInput[];
   effects?: readonly string[];
   requires?: readonly string[];
   policyResources?: readonly string[];
@@ -144,9 +260,12 @@ export interface FrontierToolAction {
   id: string;
   title: string;
   description?: string;
+  capability?: string;
+  risk: FrontierToolRisk;
   inputSchema: FrontierToolJsonSchema;
   reads: string[];
   writes: string[];
+  producedArtifacts: FrontierToolArtifact[];
   effects: string[];
   requires: string[];
   policyResources: string[];
@@ -443,9 +562,12 @@ export interface FrontierToolDescriptor {
   title: string;
   description?: string;
   format: FrontierToolDescriptorFormat;
+  capability?: string;
+  risk: FrontierToolRisk;
   inputSchema: FrontierToolJsonSchema;
   reads: string[];
   writes: string[];
+  producedArtifacts: FrontierToolArtifact[];
   effects: string[];
   requires: string[];
   requiresApproval: boolean;
@@ -490,7 +612,8 @@ export function createToolsManifest(input: FrontierToolsManifestInput = {}): Fro
     seen.add(action.id);
   }
   actions.sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
-  const resources = sortedUnique((input.resources ?? []).concat(...actions.map((action) => action.reads), ...actions.map((action) => action.writes), ...actions.map((action) => action.policyResources)));
+  const producedArtifacts = actions.flatMap((action) => action.producedArtifacts.flatMap((artifact) => artifact.path === undefined ? [] : [artifact.path]));
+  const resources = sortedUnique((input.resources ?? []).concat(...actions.map((action) => action.reads), ...actions.map((action) => action.writes), ...producedArtifacts, ...actions.map((action) => action.policyResources)));
   const capabilities = sortedUnique((input.capabilities ?? []).concat(...actions.map((action) => action.requires)));
   const effects = sortedUnique((input.effects ?? []).concat(...actions.map((action) => action.effects)));
   const routes = sortedUnique((input.routes ?? []).concat(...actions.map((action) => action.routes)));
@@ -530,6 +653,514 @@ export function defineToolAction(input: FrontierToolActionInput): FrontierToolAc
 
 export function defineTools(input: FrontierToolsManifestInput = {}): FrontierToolsManifest {
   return createToolsManifest(input);
+}
+
+export function createAgentTaskDescriptor(input: FrontierAgentTaskDescriptorInput): FrontierAgentTaskDescriptor {
+  if (!isObject(input)) throw new TypeError('agent task descriptor must be an object');
+  const id = readString(input.id, 'agent task id');
+  if (id.length === 0) throw new TypeError('agent task id must not be empty');
+  const capability = readString(input.capability, 'agent task capability');
+  if (capability.length === 0) throw new TypeError('agent task capability must not be empty');
+  const reads = uniqueStrings(input.reads ?? []);
+  const writes = uniqueStrings(input.writes ?? []);
+  return {
+    kind: FRONTIER_AGENT_TASK_DESCRIPTOR_KIND,
+    version: FRONTIER_AGENT_TASK_DESCRIPTOR_VERSION,
+    id,
+    capability,
+    title: input.title === undefined ? titleFromId(id) : readString(input.title, 'agent task title'),
+    description: optionalString(input.description, 'agent task description'),
+    reads,
+    writes,
+    expectedArtifacts: (input.expectedArtifacts ?? []).map((artifact, index) => normalizeAgentTaskArtifact(artifact, index)),
+    safetyPolicy: normalizeAgentTaskSafetyPolicy(input.safetyPolicy, id, capability, reads, writes),
+    status: input.status === undefined ? 'planned' : readString(input.status, 'agent task status'),
+    owner: optionalString(input.owner, 'agent task owner'),
+    package: optionalString(input.package, 'agent task package'),
+    feature: optionalString(input.feature, 'agent task feature'),
+    tags: uniqueStrings(input.tags ?? []),
+    source: input.source === undefined ? undefined : input.source,
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'agent task metadata')
+  };
+}
+
+export function defineAgentTaskDescriptor(input: FrontierAgentTaskDescriptorInput): FrontierAgentTaskDescriptor {
+  return createAgentTaskDescriptor(input);
+}
+
+export interface FrontierCoordinatorActionRegistryInput {
+  id?: string;
+  title?: string;
+  package?: string;
+  feature?: string;
+  owner?: string;
+  artifactRoot?: string;
+  metadata?: unknown;
+}
+
+export const FRONTIER_COORDINATOR_ACTION_REGISTRY_ID = 'frontier.tools.coordinator-actions';
+export const FRONTIER_COORDINATOR_ACTION_IDS = [
+  'coordinator.inspect-queue',
+  'coordinator.lease-scope',
+  'coordinator.apply-bundle',
+  'coordinator.rerun-task',
+  'coordinator.record-decision',
+  'coordinator.answer-question',
+  'coordinator.refill-queue'
+] as const;
+
+export function createCoordinatorActionDescriptors(input: FrontierCoordinatorActionRegistryInput = {}): FrontierToolActionInput[] {
+  const artifactRoot = input.artifactRoot === undefined ? 'coordinator' : readString(input.artifactRoot, 'coordinator artifact root');
+  const owner = optionalString(input.owner, 'coordinator action owner');
+  const packageName = optionalString(input.package, 'coordinator action package');
+  const feature = optionalString(input.feature, 'coordinator action feature');
+
+  return [
+    {
+      id: 'coordinator.inspect-queue',
+      title: 'Inspect queue',
+      description: 'Inspect coordinator queue scopes, bundles, and decisions before classifying work.',
+      capability: 'coordinator.queue.inspect',
+      risk: 'low',
+      input: {
+        queueId: { type: 'string', minLength: 1 },
+        scope: { type: 'string', required: false },
+        limit: { type: 'integer', required: false, minimum: 0 },
+        includeChildren: { type: 'boolean', required: false },
+        includeLeases: { type: 'boolean', required: false },
+        includeBundles: { type: 'boolean', required: false },
+        includeDecisions: { type: 'boolean', required: false }
+      },
+      reads: ['queue:items', 'queue:leases', 'queue:bundles', 'queue:decisions', 'queue:questions'],
+      writes: [
+        artifactRoot + '/inspect-queue.json',
+        artifactRoot + '/inspect-queue.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'report', path: artifactRoot + '/inspect-queue.json', required: true },
+        { kind: 'log', path: artifactRoot + '/inspect-queue.jsonl', required: true }
+      ],
+      requires: ['coordinator.queue.inspect'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['coordinator', 'queue', 'inspect']
+    },
+    {
+      id: 'coordinator.lease-scope',
+      title: 'Lease scope',
+      description: 'Lease a queue scope so one local coordinator can serialize the decision lane.',
+      capability: 'coordinator.queue.lease',
+      risk: 'medium',
+      input: {
+        queueId: { type: 'string', minLength: 1 },
+        leaseKey: { type: 'string', minLength: 1 },
+        scope: { type: 'string', minLength: 1 },
+        owner: { type: 'string', required: false },
+        ttlMs: { type: 'integer', required: false, minimum: 0 },
+        strict: { type: 'boolean', required: false }
+      },
+      reads: ['queue:items', 'queue:leases', 'queue:scopes', 'queue:bundles'],
+      writes: [
+        'queue:leases/:leaseKey',
+        artifactRoot + '/lease-scope.json'
+      ],
+      producedArtifacts: [
+        { kind: 'lease', path: 'queue:leases/:leaseKey', required: true },
+        { kind: 'report', path: artifactRoot + '/lease-scope.json', required: true }
+      ],
+      requires: ['coordinator.queue.lease'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['coordinator', 'lease', 'scope']
+    },
+    {
+      id: 'coordinator.apply-bundle',
+      title: 'Apply bundle',
+      description: 'Apply an admitted bundle, record the decision, and preserve the evidence trail.',
+      capability: 'coordinator.bundle.apply',
+      risk: 'high',
+      input: {
+        bundleId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        leaseKey: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        targetRef: { type: 'string', required: false },
+        dryRunOnly: { type: 'boolean', required: false },
+        requiredGates: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['queue:leases', 'queue:bundles', 'bundle:patches', 'bundle:verification', 'queue:decisions'],
+      writes: [
+        'decision:ledger',
+        'bundle:changes',
+        artifactRoot + '/apply-bundle.json',
+        artifactRoot + '/decision-ledger.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'decision', path: artifactRoot + '/apply-bundle.json', required: true },
+        { kind: 'log', path: artifactRoot + '/decision-ledger.jsonl', required: true },
+        { kind: 'patch', path: 'bundle:changes', required: false }
+      ],
+      requires: ['coordinator.bundle.apply'],
+      approval: {
+        required: true,
+        reason: 'bundle application mutates queue-owned state'
+      },
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['coordinator', 'apply', 'bundle']
+    },
+    {
+      id: 'coordinator.rerun-task',
+      title: 'Rerun task',
+      description: 'Create a fresh task from stale or incomplete coordinator evidence.',
+      capability: 'coordinator.task.rerun',
+      risk: 'medium',
+      input: {
+        taskId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        sourceBundleId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        refreshEvidence: { type: 'boolean', required: false }
+      },
+      reads: ['queue:items', 'queue:bundles', 'queue:decisions', 'queue:evidence'],
+      writes: [
+        'queue:tasks',
+        artifactRoot + '/rerun-task.json',
+        artifactRoot + '/rerun-manifest.json'
+      ],
+      producedArtifacts: [
+        { kind: 'task', path: artifactRoot + '/rerun-task.json', required: true },
+        { kind: 'manifest', path: artifactRoot + '/rerun-manifest.json', required: true }
+      ],
+      requires: ['coordinator.task.rerun'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['coordinator', 'rerun', 'task']
+    },
+    {
+      id: 'coordinator.record-decision',
+      title: 'Record decision',
+      description: 'Record a terminal coordinator decision and attach the decision evidence.',
+      capability: 'coordinator.decision.record',
+      risk: 'medium',
+      input: {
+        decisionId: { type: 'string', minLength: 1 },
+        queueItemId: { type: 'string', required: false },
+        bundleId: { type: 'string', required: false },
+        scope: { type: 'string', required: false },
+        status: { type: 'string', minLength: 1 },
+        reason: { type: 'string', required: false },
+        note: { type: 'string', required: false }
+      },
+      reads: ['queue:items', 'queue:decisions', 'queue:bundles', 'queue:evidence'],
+      writes: [
+        'decision:ledger',
+        artifactRoot + '/record-decision.json'
+      ],
+      producedArtifacts: [
+        { kind: 'decision', path: artifactRoot + '/record-decision.json', required: true }
+      ],
+      requires: ['coordinator.decision.record'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['coordinator', 'decision', 'record']
+    },
+    {
+      id: 'coordinator.answer-question',
+      title: 'Answer question',
+      description: 'Answer a structured coordinator question and route the response back to the queue.',
+      capability: 'coordinator.question.answer',
+      risk: 'low',
+      input: {
+        questionId: { type: 'string', minLength: 1 },
+        answerCode: { type: 'string', minLength: 1 },
+        answer: { type: 'string', required: false },
+        decisionId: { type: 'string', required: false },
+        queueItemId: { type: 'string', required: false },
+        taskId: { type: 'string', required: false },
+        evidencePaths: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['queue:questions', 'queue:decisions', 'queue:answers'],
+      writes: [
+        'queue:answers',
+        'queue:questions',
+        artifactRoot + '/answer-question.json',
+        artifactRoot + '/human-answer-routing.json'
+      ],
+      producedArtifacts: [
+        { kind: 'answer', path: artifactRoot + '/answer-question.json', required: true },
+        { kind: 'routing', path: artifactRoot + '/human-answer-routing.json', required: true }
+      ],
+      requires: ['coordinator.question.answer'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['coordinator', 'question', 'answer']
+    },
+    {
+      id: 'coordinator.refill-queue',
+      title: 'Refill queue',
+      description: 'Refill a coordinator queue with fresh work, follow-ups, or promoted items.',
+      capability: 'coordinator.queue.refill',
+      risk: 'medium',
+      input: {
+        queueId: { type: 'string', minLength: 1 },
+        scope: { type: 'string', required: false },
+        targetCount: { type: 'integer', required: false, minimum: 0 },
+        source: { type: 'string', required: false },
+        priorityFloor: { type: 'number', required: false },
+        includePromoted: { type: 'boolean', required: false }
+      },
+      reads: ['queue:items', 'queue:leases', 'queue:bundles', 'queue:decisions', 'queue:promotions'],
+      writes: [
+        'queue:items',
+        artifactRoot + '/refill-queue.json',
+        artifactRoot + '/queue-refill.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'manifest', path: artifactRoot + '/refill-queue.json', required: true },
+        { kind: 'log', path: artifactRoot + '/queue-refill.jsonl', required: true }
+      ],
+      requires: ['coordinator.queue.refill'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['coordinator', 'queue', 'refill']
+    }
+  ];
+}
+
+export function createCoordinatorActionManifest(input: FrontierCoordinatorActionRegistryInput = {}): FrontierToolsManifest {
+  return createToolsManifest({
+    id: input.id ?? FRONTIER_COORDINATOR_ACTION_REGISTRY_ID,
+    title: input.title ?? 'Coordinator actions',
+    package: input.package,
+    feature: input.feature,
+    owner: input.owner,
+    actions: createCoordinatorActionDescriptors(input),
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'coordinator action registry metadata')
+  });
+}
+
+export function defineCoordinatorActions(input: FrontierCoordinatorActionRegistryInput = {}): FrontierToolsManifest {
+  return createCoordinatorActionManifest(input);
+}
+
+export interface FrontierModelRoutingActionRegistryInput {
+  id?: string;
+  title?: string;
+  package?: string;
+  feature?: string;
+  owner?: string;
+  artifactRoot?: string;
+  metadata?: unknown;
+}
+
+export const FRONTIER_MODEL_ROUTING_ACTION_REGISTRY_ID = 'frontier.tools.model-routing-actions';
+export const FRONTIER_MODEL_ROUTING_ACTION_IDS = [
+  'model-routing.explain-routing',
+  'model-routing.compare-candidate-tiers',
+  'model-routing.apply-budget-caps',
+  'model-routing.record-outcome-feedback',
+  'model-routing.request-tournament-rerun'
+] as const;
+
+export function createModelRoutingActionDescriptors(input: FrontierModelRoutingActionRegistryInput = {}): FrontierToolActionInput[] {
+  const artifactRoot = input.artifactRoot === undefined ? 'model-routing' : readString(input.artifactRoot, 'model routing artifact root');
+  const owner = optionalString(input.owner, 'model routing action owner');
+  const packageName = optionalString(input.package, 'model routing action package');
+  const feature = optionalString(input.feature, 'model routing action feature');
+
+  return [
+    {
+      id: 'model-routing.explain-routing',
+      title: 'Explain routing',
+      description: 'Explain why a request selected a model tier, fallback, or routing path.',
+      capability: 'model-routing.routing.explain',
+      risk: 'low',
+      input: {
+        requestId: { type: 'string', minLength: 1 },
+        routeId: { type: 'string', required: false },
+        modelId: { type: 'string', required: false },
+        tierId: { type: 'string', required: false },
+        includeSignals: { type: 'boolean', required: false },
+        includeBudget: { type: 'boolean', required: false },
+        maxReasons: { type: 'integer', required: false, minimum: 0 }
+      },
+      reads: ['model-routing:routes', 'model-routing:decisions', 'model-routing:signals', 'model-routing:budgets'],
+      writes: [
+        artifactRoot + '/explain-routing.json',
+        artifactRoot + '/explain-routing.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'report', path: artifactRoot + '/explain-routing.json', required: true },
+        { kind: 'log', path: artifactRoot + '/explain-routing.jsonl', required: true }
+      ],
+      requires: ['model-routing.routing.explain'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['model-routing', 'explain', 'dashboard']
+    },
+    {
+      id: 'model-routing.compare-candidate-tiers',
+      title: 'Compare candidate tiers',
+      description: 'Compare candidate model tiers by cost, latency, quality, and confidence signals.',
+      capability: 'model-routing.tiers.compare',
+      risk: 'low',
+      input: {
+        comparisonId: { type: 'string', minLength: 1 },
+        requestId: { type: 'string', required: false },
+        candidateTierIds: { type: 'array', items: { type: 'string' } },
+        metrics: { type: 'array', required: false, items: { type: 'string' } },
+        preferLowerCost: { type: 'boolean', required: false },
+        preferLowerLatency: { type: 'boolean', required: false },
+        includeBudgetSignals: { type: 'boolean', required: false }
+      },
+      reads: ['model-routing:candidates', 'model-routing:benchmarks', 'model-routing:decisions', 'model-routing:budgets'],
+      writes: [
+        artifactRoot + '/compare-candidate-tiers.json',
+        artifactRoot + '/compare-candidate-tiers.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'report', path: artifactRoot + '/compare-candidate-tiers.json', required: true },
+        { kind: 'log', path: artifactRoot + '/compare-candidate-tiers.jsonl', required: true }
+      ],
+      requires: ['model-routing.tiers.compare'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['model-routing', 'compare', 'tiers']
+    },
+    {
+      id: 'model-routing.apply-budget-caps',
+      title: 'Apply budget caps',
+      description: 'Apply or preview budget caps for a routing scope or candidate pool.',
+      capability: 'model-routing.budget.apply',
+      risk: 'medium',
+      input: {
+        budgetId: { type: 'string', minLength: 1 },
+        scope: { type: 'string', required: false },
+        tierId: { type: 'string', required: false },
+        capTokens: { type: 'integer', required: false, minimum: 0 },
+        capUsd: { type: 'number', required: false, minimum: 0 },
+        strict: { type: 'boolean', required: false },
+        applyToCurrentRun: { type: 'boolean', required: false }
+      },
+      reads: ['model-routing:budgets', 'model-routing:usage', 'model-routing:decisions', 'model-routing:policies'],
+      writes: [
+        'model-routing:budget-caps',
+        artifactRoot + '/budget-caps.json',
+        artifactRoot + '/budget-caps.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'budget', path: artifactRoot + '/budget-caps.json', required: true },
+        { kind: 'log', path: artifactRoot + '/budget-caps.jsonl', required: true }
+      ],
+      requires: ['model-routing.budget.apply'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['model-routing', 'budget', 'caps']
+    },
+    {
+      id: 'model-routing.record-outcome-feedback',
+      title: 'Record outcome feedback',
+      description: 'Record an execution outcome, winner signal, and feedback for later routing analysis.',
+      capability: 'model-routing.feedback.record',
+      risk: 'low',
+      input: {
+        outcomeId: { type: 'string', minLength: 1 },
+        requestId: { type: 'string', required: false },
+        winningTierId: { type: 'string', required: false },
+        score: { type: 'number', required: false },
+        latencyMs: { type: 'number', required: false, minimum: 0 },
+        costUsd: { type: 'number', required: false, minimum: 0 },
+        feedback: { type: 'string', required: false },
+        tags: { type: 'array', required: false, items: { type: 'string' } }
+      },
+      reads: ['model-routing:decisions', 'model-routing:outcomes', 'model-routing:usage', 'model-routing:signals'],
+      writes: [
+        'model-routing:feedback',
+        artifactRoot + '/outcome-feedback.json',
+        artifactRoot + '/outcome-feedback.jsonl'
+      ],
+      producedArtifacts: [
+        { kind: 'record', path: artifactRoot + '/outcome-feedback.json', required: true },
+        { kind: 'log', path: artifactRoot + '/outcome-feedback.jsonl', required: true }
+      ],
+      requires: ['model-routing.feedback.record'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['model-routing', 'feedback', 'outcome']
+    },
+    {
+      id: 'model-routing.request-tournament-rerun',
+      title: 'Request tournament rerun',
+      description: 'Request a fresh candidate tournament when the current result is stale or inconclusive.',
+      capability: 'model-routing.tournament.rerun',
+      risk: 'medium',
+      input: {
+        tournamentId: { type: 'string', minLength: 1 },
+        requestId: { type: 'string', required: false },
+        reason: { type: 'string', required: false },
+        candidateTierIds: { type: 'array', required: false, items: { type: 'string' } },
+        refreshEvidence: { type: 'boolean', required: false },
+        priority: { type: 'number', required: false },
+        maxCandidates: { type: 'integer', required: false, minimum: 0 }
+      },
+      reads: ['model-routing:tournaments', 'model-routing:decisions', 'model-routing:feedback', 'model-routing:signals'],
+      writes: [
+        'model-routing:tournament-reruns',
+        artifactRoot + '/tournament-rerun.json',
+        artifactRoot + '/tournament-rerun-manifest.json'
+      ],
+      producedArtifacts: [
+        { kind: 'task', path: artifactRoot + '/tournament-rerun.json', required: true },
+        { kind: 'manifest', path: artifactRoot + '/tournament-rerun-manifest.json', required: true }
+      ],
+      requires: ['model-routing.tournament.rerun'],
+      dryRun: true,
+      owner,
+      package: packageName,
+      feature,
+      tags: ['model-routing', 'rerun', 'tournament']
+    }
+  ];
+}
+
+export function createModelRoutingActionManifest(input: FrontierModelRoutingActionRegistryInput = {}): FrontierToolsManifest {
+  return createToolsManifest({
+    id: input.id ?? FRONTIER_MODEL_ROUTING_ACTION_REGISTRY_ID,
+    title: input.title ?? 'Model routing actions',
+    package: input.package,
+    feature: input.feature,
+    owner: input.owner,
+    actions: createModelRoutingActionDescriptors(input),
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'model routing action registry metadata')
+  });
+}
+
+export function defineModelRoutingActions(input: FrontierModelRoutingActionRegistryInput = {}): FrontierToolsManifest {
+  return createModelRoutingActionManifest(input);
 }
 
 export function compileTools(
@@ -688,11 +1319,14 @@ export function createToolDescriptor(
       inputSchema: action.inputSchema,
       reads: action.reads as unknown as JsonValue,
       writes: action.writes as unknown as JsonValue,
+      producedArtifacts: action.producedArtifacts as unknown as JsonValue,
       effects: action.effects as unknown as JsonValue,
       requires: action.requires as unknown as JsonValue,
       dryRun: action.dryRun,
       requiresApproval
     };
+    if (action.capability !== undefined) raw.capability = action.capability;
+    if (action.risk !== undefined) raw.risk = action.risk;
   }
   if (options.includeFrontierMetadata === true && format !== 'frontier') {
     raw.frontier = createDescriptorMetadata(action) as unknown as JsonValue;
@@ -703,9 +1337,12 @@ export function createToolDescriptor(
     title: action.title,
     description: action.description,
     format,
+    capability: action.capability,
+    risk: action.risk,
     inputSchema: action.inputSchema,
     reads: action.reads.slice(),
     writes: action.writes.slice(),
+    producedArtifacts: action.producedArtifacts.slice(),
     effects: action.effects.slice(),
     requires: action.requires.slice(),
     requiresApproval,
@@ -901,10 +1538,10 @@ export function createToolsRegistryGraph(
   manifest: FrontierToolsManifest,
   input: { package?: string; feature?: string; owner?: string; generatedAt?: number; metadata?: unknown } = {}
 ): FrontierRegistryGraph {
-  const entries: FrontierRegistryEntry[] = [{
-    id: manifest.id,
-    kind: 'tools-manifest',
-    package: input.package ?? manifest.package,
+    const entries: FrontierRegistryEntry[] = [{
+      id: manifest.id,
+      kind: 'tools-manifest',
+      package: input.package ?? manifest.package,
     feature: input.feature ?? manifest.feature,
     owner: input.owner ?? manifest.owner,
     source: manifest.source,
@@ -927,17 +1564,20 @@ export function createToolsRegistryGraph(
       feature: action.feature ?? input.feature ?? manifest.feature,
       owner: action.owner ?? input.owner ?? manifest.owner,
       source: action.source,
-      touches: action.reads.concat(action.writes),
+      touches: action.reads.concat(action.writes, action.producedArtifacts.flatMap((artifact) => artifact.path === undefined ? [] : [artifact.path])),
       consumes: action.requires.concat(action.reads),
-      produces: action.writes.concat(action.effects),
+      produces: action.writes.concat(action.producedArtifacts.flatMap((artifact) => artifact.path === undefined ? [] : [artifact.path]), action.effects),
       tags: action.tags,
       metadata: {
         title: action.title,
         dryRun: action.dryRun,
         requiresApproval: action.approval?.required === true,
-        expectedPatchCount: action.expectedPatch.length
-      }
+        expectedPatchCount: action.expectedPatch.length,
+        producedArtifactCount: action.producedArtifacts.length
+      } as JsonObject
     };
+    if (action.capability !== undefined) entries[entries.length - 1].metadata!.capability = action.capability;
+    if (action.risk !== undefined) entries[entries.length - 1].metadata!.risk = action.risk;
     edges[edges.length] = { from: manifest.id, to: action.id, kind: 'contains' };
     for (const capability of action.requires) edges[edges.length] = { from: action.id, to: 'capability:' + capability, kind: 'depends-on' };
     for (const read of action.reads) edges[edges.length] = { from: action.id, to: read, kind: 'reads' };
@@ -1071,20 +1711,28 @@ function normalizeToolAction(input: FrontierToolActionInput, index: number): Fro
   if (id.length === 0) throw new TypeError('tool action id must not be empty');
   const reads = uniqueStrings(input.reads ?? []);
   const writes = uniqueStrings(input.writes ?? []);
+  const producedArtifacts = (input.producedArtifacts ?? []).map((artifact, artifactIndex) => normalizeToolArtifact(artifact, 'tool action producedArtifacts[' + artifactIndex + ']'));
   const effects = uniqueStrings(input.effects ?? []);
-  const requires = uniqueStrings(input.requires ?? []);
+  const capability = optionalString(input.capability, 'tool action capability');
+  const requires = uniqueStrings((capability === undefined ? [] : [capability]).concat(input.requires ?? []));
   const routes = uniqueStrings((input.route === undefined ? [] : [readString(input.route, 'tool action route')]).concat(input.routes ?? []));
   const policyResources = uniqueStrings((input.policyResources ?? []).concat('tool:' + id, reads, writes, effects));
   const inputSchema = normalizeInputSchema(input.input, input.inputSchema, id);
+  const risk = input.risk === undefined
+    ? (writes.length !== 0 || effects.length !== 0 || producedArtifacts.length !== 0 ? 'medium' : 'low')
+    : readString(input.risk, 'tool action risk');
   return {
     kind: FRONTIER_TOOL_ACTION_KIND,
     version: FRONTIER_TOOL_ACTION_VERSION,
     id,
     title: input.title === undefined ? titleFromId(id) : readString(input.title, 'tool action title'),
     description: optionalString(input.description, 'tool action description'),
+    capability: capability ?? requires[0],
+    risk,
     inputSchema,
     reads,
     writes,
+    producedArtifacts,
     effects,
     requires,
     policyResources,
@@ -1099,6 +1747,83 @@ function normalizeToolAction(input: FrontierToolActionInput, index: number): Fro
     tags: uniqueStrings(input.tags ?? []),
     source: input.source === undefined ? undefined : input.source,
     metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'tool action metadata')
+  };
+}
+
+function normalizeAgentTaskArtifact(input: FrontierAgentTaskArtifactInput, index: number): FrontierAgentTaskArtifact {
+  if (typeof input === 'string') {
+    if (input.length === 0) throw new TypeError('agent task artifact path must not be empty');
+    return {
+      id: 'artifact:' + index,
+      kind: 'artifact',
+      path: input,
+      required: true
+    };
+  }
+  if (!isObject(input)) throw new TypeError('agent task artifact must be a string path or object');
+  const kind = input.kind === undefined ? 'artifact' : readString(input.kind, 'agent task artifact kind');
+  const path = optionalString(input.path, 'agent task artifact path');
+  const id = input.id === undefined ? (path === undefined ? kind + ':' + index : kind + ':' + path) : readString(input.id, 'agent task artifact id');
+  if (id.length === 0) throw new TypeError('agent task artifact id must not be empty');
+  return {
+    id,
+    kind,
+    path,
+    description: optionalString(input.description, 'agent task artifact description'),
+    required: input.required !== false,
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, 'agent task artifact metadata')
+  };
+}
+
+function normalizeAgentTaskSafetyPolicy(
+  input: FrontierAgentTaskSafetyPolicyInput | undefined,
+  taskId: string,
+  capability: string,
+  reads: readonly string[],
+  writes: readonly string[]
+): FrontierAgentTaskSafetyPolicy {
+  const approvalRequired = input?.approvalRequired === true;
+  const destructive = input?.destructive ?? writes.length !== 0;
+  const policyResources = uniqueStrings((input?.policyResources ?? []).concat('task:' + taskId, 'capability:' + capability, reads, writes));
+  const out: FrontierAgentTaskSafetyPolicy = {
+    approvalRequired,
+    approvalMode: input?.approvalMode === undefined ? (approvalRequired ? 'always' : 'policy') : readString(input.approvalMode, 'agent task approval mode'),
+    destructive,
+    sandbox: input?.sandbox === undefined ? 'workspace' : readString(input.sandbox, 'agent task sandbox'),
+    network: input?.network === undefined ? 'restricted' : readString(input.network, 'agent task network'),
+    secrets: input?.secrets === undefined ? 'redacted' : readString(input.secrets, 'agent task secrets'),
+    allowedCommands: uniqueStrings(input?.allowedCommands ?? []),
+    deniedCommands: uniqueStrings(input?.deniedCommands ?? []),
+    requires: uniqueStrings([capability].concat(input?.requires ?? [])),
+    policyResources,
+    metadata: input?.metadata === undefined ? undefined : readJsonObject(input.metadata, 'agent task safety metadata')
+  };
+  if (input?.maxRuntimeMs !== undefined) out.maxRuntimeMs = readNonNegativeNumber(input.maxRuntimeMs, 'agent task maxRuntimeMs');
+  return out;
+}
+
+function normalizeToolArtifact(input: FrontierToolArtifactInput, label: string): FrontierToolArtifact {
+  if (typeof input === 'string') {
+    if (input.length === 0) throw new TypeError(label + ' path must not be empty');
+    return {
+      id: 'artifact:' + hashStable([label, input]),
+      kind: 'artifact',
+      path: input,
+      required: true
+    };
+  }
+  if (!isObject(input)) throw new TypeError(label + ' must be a string path or object');
+  const kind = input.kind === undefined ? 'artifact' : readString(input.kind, label + ' kind');
+  const path = optionalString(input.path, label + ' path');
+  const id = input.id === undefined ? (path === undefined ? kind + ':' + hashStable([label, kind]) : kind + ':' + path) : readString(input.id, label + ' id');
+  if (id.length === 0) throw new TypeError(label + ' id must not be empty');
+  return {
+    id,
+    kind,
+    path,
+    description: optionalString(input.description, label + ' description'),
+    required: input.required !== false,
+    metadata: input.metadata === undefined ? undefined : readJsonObject(input.metadata, label + ' metadata')
   };
 }
 
@@ -1442,12 +2167,15 @@ function createDescriptorMetadata(action: FrontierToolAction): JsonObject {
     actionId: action.id,
     reads: action.reads as unknown as JsonValue,
     writes: action.writes as unknown as JsonValue,
+    producedArtifacts: action.producedArtifacts as unknown as JsonValue,
     effects: action.effects as unknown as JsonValue,
     requires: action.requires as unknown as JsonValue,
     policyResources: action.policyResources as unknown as JsonValue,
     dryRun: action.dryRun,
     expectedPatch: action.expectedPatch as unknown as JsonValue
   };
+  if (action.capability !== undefined) metadata.capability = action.capability;
+  if (action.risk !== undefined) metadata.risk = action.risk;
   if (action.rollback !== undefined) metadata.rollback = action.rollback as unknown as JsonValue;
   if (action.approval !== undefined) metadata.approval = action.approval as unknown as JsonValue;
   if (action.feature !== undefined) metadata.feature = action.feature;
@@ -1532,6 +2260,11 @@ function isPromiseLike(value: unknown): value is Promise<unknown> {
 
 function readString(value: unknown, label: string): string {
   if (typeof value !== 'string') throw new TypeError(label + ' must be a string');
+  return value;
+}
+
+function readNonNegativeNumber(value: unknown, label: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new TypeError(label + ' must be a non-negative number');
   return value;
 }
 
